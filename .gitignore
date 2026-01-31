@@ -1,0 +1,8 @@
+/TODO.md
+/voice-assistant
+/run-voice-assistant.sh
+
+# sherpa-onnx CUDA build artifacts
+/.sherpa-onnx-build/
+/.sherpa-onnx-cuda/
+/.sherpa-onnx-go-local/
