@@ -1,0 +1,19 @@
+/Cargo.lock
+
+# Generated files
+/target/
+/.sherpa-onnx-build/
+/.sherpa-onnx-cuda/
+/run-voice-assistant.sh
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# macOS
+.DS_Store
+
+# Logs
+*.log
