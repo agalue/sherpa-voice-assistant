@@ -304,12 +304,13 @@ else
     echo -e "${YELLOW}Downloading espeak-ng data...${NC}"
     ESPEAK_URL="${SHERPA_BASE}/tts-models/espeak-ng-data.tar.bz2"
     
-    tmp_dir=$(mktemp -d)
-    
-    curl -L "$ESPEAK_URL" -o "${tmp_dir}/espeak-ng-data.tar.bz2"
-    tar -xjf "${tmp_dir}/espeak-ng-data.tar.bz2" -C "${KOKORO_DIR}"
-    
-    rm -rf "${tmp_dir}"
+    (
+        tmp_dir=$(mktemp -d)
+        trap 'rm -rf "$tmp_dir"' EXIT
+        
+        curl -L "$ESPEAK_URL" -o "${tmp_dir}/espeak-ng-data.tar.bz2"
+        tar -xjf "${tmp_dir}/espeak-ng-data.tar.bz2" -C "${KOKORO_DIR}"
+    )
     
     echo -e "${GREEN}✓ espeak-ng data installed${NC}"
 fi
