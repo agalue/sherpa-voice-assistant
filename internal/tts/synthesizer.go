@@ -54,9 +54,12 @@ func NewSynthesizer(cfg *Config) (*Synthesizer, error) {
 	ttsConfig.Model.Kokoro.Lang = cfg.Language           // Required for multi-lingual Kokoro v1.0+
 	ttsConfig.Model.Kokoro.LengthScale = 1.0 / cfg.Speed // Inverse for speed control
 	ttsConfig.Model.NumThreads = 2
-	ttsConfig.Model.Debug = 0
 	ttsConfig.Model.Provider = cfg.Provider // Hardware acceleration (cpu, cuda, coreml)
 	ttsConfig.MaxNumSentences = 1           // Kokoro TTS only supports 1
+	ttsConfig.Model.Debug = 0
+	if cfg.Verbose {
+		ttsConfig.Model.Debug = 1
+	}
 
 	tts := sherpa.NewOfflineTts(ttsConfig)
 	if tts == nil {

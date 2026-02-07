@@ -8,10 +8,10 @@ require (
 	// For CUDA builds, the build script compiles sherpa-onnx from source and the versions MUST match.
 	// The build script will fail with an error if versions drift.
 	// See README.md "Upgrading Dependencies" section for the upgrade procedure.
-	// Version mapping: v1.12.22 works with ONNX Runtime 1.11.0-1.18.1 (depends on CUDA version)
-	github.com/k2-fsa/sherpa-onnx-go-linux v1.12.22
-	github.com/k2-fsa/sherpa-onnx-go-macos v1.12.22
-	github.com/ollama/ollama v0.15.2
+	// Version mapping: v1.12.23 works with ONNX Runtime 1.11.0-1.18.1 (depends on CUDA version)
+	github.com/k2-fsa/sherpa-onnx-go-linux v1.12.23
+	github.com/k2-fsa/sherpa-onnx-go-macos v1.12.23
+	github.com/ollama/ollama v0.15.6
 )
 
 require (
