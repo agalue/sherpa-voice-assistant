@@ -252,17 +252,18 @@ if [[ "$FORCE_DOWNLOAD" = false && -f "${WHISPER_DIR}/whisper-small-encoder.int8
 else
     echo -e "${YELLOW}This may take a few minutes...${NC}"
     
-    tmp_dir=$(mktemp -d)
-    
-    curl -L "$WHISPER_URL" -o "${tmp_dir}/whisper.tar.bz2"
-    tar -xjf "${tmp_dir}/whisper.tar.bz2" -C "${tmp_dir}"
+    (
+        tmp_dir=$(mktemp -d)
+        trap 'rm -rf "$tmp_dir"' EXIT
+        
+        curl -L "$WHISPER_URL" -o "${tmp_dir}/whisper.tar.bz2"
+        tar -xjf "${tmp_dir}/whisper.tar.bz2" -C "${tmp_dir}"
 
-    # Move only int8 quantized models (smaller, faster)
-    cp "${tmp_dir}/sherpa-onnx-whisper-small/small-encoder.int8.onnx" "${WHISPER_DIR}/whisper-small-encoder.int8.onnx"
-    cp "${tmp_dir}/sherpa-onnx-whisper-small/small-decoder.int8.onnx" "${WHISPER_DIR}/whisper-small-decoder.int8.onnx"
-    cp "${tmp_dir}/sherpa-onnx-whisper-small/small-tokens.txt" "${WHISPER_DIR}/whisper-small-tokens.txt"
-    
-    rm -rf "${tmp_dir}"
+        # Move only int8 quantized models (smaller, faster)
+        cp "${tmp_dir}/sherpa-onnx-whisper-small/small-encoder.int8.onnx" "${WHISPER_DIR}/whisper-small-encoder.int8.onnx"
+        cp "${tmp_dir}/sherpa-onnx-whisper-small/small-decoder.int8.onnx" "${WHISPER_DIR}/whisper-small-decoder.int8.onnx"
+        cp "${tmp_dir}/sherpa-onnx-whisper-small/small-tokens.txt" "${WHISPER_DIR}/whisper-small-tokens.txt"
+    )
 
     echo -e "${GREEN}✓ Whisper model installed${NC}"
 fi
@@ -279,16 +280,17 @@ if [[ "$FORCE_DOWNLOAD" = false && -f "${KOKORO_DIR}/model.onnx" ]]; then
 else
     echo -e "${YELLOW}This may take a few minutes (~333MB download)...${NC}"
     
-    tmp_dir=$(mktemp -d)
-    
-    curl -L "$TTS_URL" -o "${tmp_dir}/kokoro.tar.bz2"
-    tar -xjf "${tmp_dir}/kokoro.tar.bz2" -C "${tmp_dir}"
+    (
+        tmp_dir=$(mktemp -d)
+        trap 'rm -rf "$tmp_dir"' EXIT
+        
+        curl -L "$TTS_URL" -o "${tmp_dir}/kokoro.tar.bz2"
+        tar -xjf "${tmp_dir}/kokoro.tar.bz2" -C "${tmp_dir}"
 
-    # Move extracted directory to tts folder
-    rm -rf "${KOKORO_DIR}"
-    mv "${tmp_dir}/kokoro-multi-lang-v1_0" "${KOKORO_DIR}"
-    
-    rm -rf "${tmp_dir}"
+        # Move extracted directory to tts folder
+        rm -rf "${KOKORO_DIR}"
+        mv "${tmp_dir}/kokoro-multi-lang-v1_0" "${KOKORO_DIR}"
+    )
 
     echo -e "${GREEN}✓ Kokoro TTS model installed${NC}"
 fi
@@ -304,12 +306,13 @@ else
     echo -e "${YELLOW}Downloading espeak-ng data...${NC}"
     ESPEAK_URL="${SHERPA_BASE}/tts-models/espeak-ng-data.tar.bz2"
     
-    tmp_dir=$(mktemp -d)
-    
-    curl -L "$ESPEAK_URL" -o "${tmp_dir}/espeak-ng-data.tar.bz2"
-    tar -xjf "${tmp_dir}/espeak-ng-data.tar.bz2" -C "${KOKORO_DIR}"
-    
-    rm -rf "${tmp_dir}"
+    (
+        tmp_dir=$(mktemp -d)
+        trap 'rm -rf "$tmp_dir"' EXIT
+        
+        curl -L "$ESPEAK_URL" -o "${tmp_dir}/espeak-ng-data.tar.bz2"
+        tar -xjf "${tmp_dir}/espeak-ng-data.tar.bz2" -C "${KOKORO_DIR}"
+    )
     
     echo -e "${GREEN}✓ espeak-ng data installed${NC}"
 fi
