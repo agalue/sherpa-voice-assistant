@@ -249,6 +249,19 @@ func ParseFlags() (*Config, error) {
 	cfg.AudioBufferMs = uint32(*audioBufferMs)
 	cfg.Temperature = float32(temperature)
 
+	// Validate numeric ranges
+	if cfg.Temperature < 0.0 || cfg.Temperature > 2.0 {
+		return nil, fmt.Errorf("temperature must be between 0.0 and 2.0, got %.2f", cfg.Temperature)
+	}
+
+	if cfg.VadThreshold < 0.0 || cfg.VadThreshold > 1.0 {
+		return nil, fmt.Errorf("vad-threshold must be between 0.0 and 1.0, got %.2f", cfg.VadThreshold)
+	}
+
+	if cfg.TTSSpeed <= 0.0 {
+		return nil, fmt.Errorf("tts-speed must be positive, got %.2f", cfg.TTSSpeed)
+	}
+
 	// Parse interrupt mode
 	if mode, err := ParseInterruptMode(interruptModeStr); err != nil {
 		return nil, err
