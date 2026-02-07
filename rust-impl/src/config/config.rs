@@ -149,7 +149,11 @@ pub struct AppConfig {
     pub max_history: usize,
 
     /// LLM temperature (0.0-2.0). Lower for translation/factual (0.1-0.3), higher for creative (0.7-1.0)
-    #[arg(long, default_value = "0.7")]
+    #[arg(
+        long,
+        default_value = "0.7",
+        value_parser = clap::value_parser!(f32).range(0.0..=2.0)
+    )]
     pub temperature: f32,
 
     /// Interrupt mode: 'always' allows interrupts (headsets), 'wait' pauses mic during playback (open speakers)
