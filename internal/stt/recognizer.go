@@ -39,14 +39,14 @@ type Recognizer struct {
 	wakeWord   string                        // Optional wake word for activation
 	verbose    bool                          // Enable verbose logging
 
-	mu         sync.Mutex                 // Protects VAD access
-	sampleRate int                        // Audio sample rate (16kHz)
-	vadConfig  *sherpa.VadModelConfig     // VAD configuration
+	mu         sync.Mutex             // Protects VAD access
+	sampleRate int                    // Audio sample rate (16kHz)
+	vadConfig  *sherpa.VadModelConfig // VAD configuration
 
 	// Speech state tracking for immediate feedback.
 	// Atomic operations avoid mutex locks in hot path.
-	wasSpeaking atomic.Bool   // Previous speaking state
-	speechStart atomic.Int64  // Speech start timestamp (Unix nanoseconds)
+	wasSpeaking atomic.Bool  // Previous speaking state
+	speechStart atomic.Int64 // Speech start timestamp (Unix nanoseconds)
 
 	// Event-driven segment delivery channel.
 	segmentChan chan []float32 // Channel for completed speech segments

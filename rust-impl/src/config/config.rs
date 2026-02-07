@@ -149,11 +149,7 @@ pub struct AppConfig {
     pub max_history: usize,
 
     /// LLM temperature (0.0-2.0). Lower for translation/factual (0.1-0.3), higher for creative (0.7-1.0)
-    #[arg(
-        long,
-        default_value = "0.7",
-        value_parser = clap::value_parser!(f32).range(0.0..=2.0)
-    )]
+    #[arg(long, default_value = "0.7", value_parser = parse_temperature)]
     pub temperature: f32,
 
     /// Interrupt mode: 'always' allows interrupts (headsets), 'wait' pauses mic during playback (open speakers)
@@ -492,4 +488,14 @@ fn has_nvidia_gpu() -> bool {
     }
 
     false
+}
+
+/// Parse and validate temperature value (0.0-2.0).
+fn parse_temperature(s: &str) -> Result<f32, String> {
+    let value: f32 = s.parse().map_err(|_| format!("'{}' is not a valid float", s))?;
+    if (0.0..=2.0).contains(&value) {
+        Ok(value)
+    } else {
+        Err(format!("temperature must be between 0.0 and 2.0, got {}", value))
+    }
 }
