@@ -279,16 +279,17 @@ if [[ "$FORCE_DOWNLOAD" = false && -f "${KOKORO_DIR}/model.onnx" ]]; then
 else
     echo -e "${YELLOW}This may take a few minutes (~333MB download)...${NC}"
     
-    tmp_dir=$(mktemp -d)
-    
-    curl -L "$TTS_URL" -o "${tmp_dir}/kokoro.tar.bz2"
-    tar -xjf "${tmp_dir}/kokoro.tar.bz2" -C "${tmp_dir}"
+    (
+        tmp_dir=$(mktemp -d)
+        trap 'rm -rf "$tmp_dir"' EXIT
+        
+        curl -L "$TTS_URL" -o "${tmp_dir}/kokoro.tar.bz2"
+        tar -xjf "${tmp_dir}/kokoro.tar.bz2" -C "${tmp_dir}"
 
-    # Move extracted directory to tts folder
-    rm -rf "${KOKORO_DIR}"
-    mv "${tmp_dir}/kokoro-multi-lang-v1_0" "${KOKORO_DIR}"
-    
-    rm -rf "${tmp_dir}"
+        # Move extracted directory to tts folder
+        rm -rf "${KOKORO_DIR}"
+        mv "${tmp_dir}/kokoro-multi-lang-v1_0" "${KOKORO_DIR}"
+    )
 
     echo -e "${GREEN}✓ Kokoro TTS model installed${NC}"
 fi
