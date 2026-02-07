@@ -44,7 +44,7 @@ impl LlmClient {
         let agent = client
             .agent(&config.ollama_model)
             .preamble(&config.system_prompt)
-            .temperature(0.7)
+            .temperature(config.temperature as f64)
             .additional_params(json!({
                 "num_ctx": 1024,
                 "num_predict": 150

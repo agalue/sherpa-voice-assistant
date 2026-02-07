@@ -17,6 +17,8 @@ For the LLM processing, I'm relying on [Ollama](https://ollama.com/), as it work
 - **Wake Word**: Optional wake word activation
 - **Hardware Acceleration**: Auto-detected CoreML (macOS) and CUDA (Linux)
 - **Multilingual**: Both STT and TTS support multiple languages (English, Spanish, French, German, etc.)
+- **Live Translation**: Zero-code configuration for real-time language translation
+- **Configurable Temperature**: Adjustable LLM temperature for translation vs. conversational tasks
 - **Shared Assets**: Models stored in `~/.voice-assistant`
 
 ## Cross-Platform Support
@@ -297,7 +299,7 @@ The default `gemma3:1b` model has limited multilingual support. Use these instea
 
 **Note**: Qwen models automatically respond in the same language as your input without needing to modify the system prompt.
 
-### Examples
+## Examples
 
 **Basic usage (always listening):**
 ```bash
@@ -337,6 +339,102 @@ The default `gemma3:1b` model has limited multilingual support. Use these instea
 ```bash
 ./run-voice-assistant.sh -provider cuda
 ```
+
+## Live Translation Use Case
+
+The voice assistant can be configured as a **real-time translator** without changing a single line of code. By combining multilingual STT, strategic system prompts, and cross-language TTS, you can create a live translation device.
+
+### How It Works
+
+1. **Input Language (STT)**: Whisper transcribes speech in the source language
+2. **Translation (LLM)**: System prompt instructs the model to translate to target language
+3. **Output Language (TTS)**: Kokoro synthesizes the translation in the target language
+4. **Temperature Control**: Lower temperature (0.1-0.3) ensures deterministic, accurate translations
+
+### Spanish → English Translation
+
+```bash
+# 1. Pull a multilingual LLM (one time)
+ollama pull qwen2.5:3b
+
+# 2. Run the translator
+./voice-assistant \
+  --ollama-model qwen2.5:3b \
+  --stt-language es \
+  --tts-voice af_bella \
+  --tts-speaker-id 2 \
+  --temperature 0.2 \
+  --system-prompt "You are a Spanish-to-English translator. Translate the following Spanish text to natural English. Output only the English translation without any Spanish words or explanations. NEVER use markdown, asterisks, underscores, backticks, brackets, code blocks, bullet points, or special characters."
+```
+
+**What happens:**
+- You speak in Spanish: "Hola, ¿cómo estás?"
+- Whisper transcribes: "Hola, ¿cómo estás?"
+- Qwen translates: "Hello, how are you?"
+- Kokoro speaks in English: "Hello, how are you?"
+
+### English → Spanish Translation
+
+```bash
+./voice-assistant \
+  --ollama-model qwen2.5:3b \
+  --stt-language en \
+  --tts-voice ef_dora \
+  --tts-speaker-id 28 \
+  --temperature 0.2 \
+  --system-prompt "You are an English-to-Spanish translator. Translate the following English text to natural Spanish. Output only the Spanish translation without any English words or explanations. NEVER use markdown, asterisks, underscores, backticks, brackets, code blocks, bullet points, or special characters."
+```
+
+### Other Language Combinations
+
+**French → English:**
+```bash
+./voice-assistant \
+  --ollama-model qwen2.5:3b \
+  --stt-language fr \
+  --tts-voice af_bella \
+  --tts-speaker-id 2 \
+  --temperature 0.2 \
+  --system-prompt "You are a French-to-English translator. Translate the following French text to natural English. Output only the English translation. NEVER use markdown or special formatting."
+```
+
+**Japanese → English:**
+```bash
+./voice-assistant \
+  --ollama-model qwen2.5:3b \
+  --stt-language ja \
+  --tts-voice af_bella \
+  --tts-speaker-id 2 \
+  --temperature 0.2 \
+  --system-prompt "You are a Japanese-to-English translator. Translate the following Japanese text to natural English. Output only the English translation. NEVER use markdown or special formatting."
+```
+
+### Key Configuration Parameters
+
+| Parameter | Purpose | Translation Value |
+|-----------|---------|------------------|
+| `--stt-language` | Source language for transcription | `es`, `fr`, `ja`, etc. |
+| `--tts-voice` | Target language voice | `af_bella` (English), `ef_dora` (Spanish), etc. |
+| `--temperature` | Translation consistency | `0.1-0.3` (lower = more deterministic) |
+| `--system-prompt` | Translation instructions | Must explicitly state "translate only" |
+| `--ollama-model` | Multilingual model | `qwen2.5:3b` or `aya-expanse:8b` |
+
+### Why Lower Temperature Matters
+
+- **Temperature 0.7** (default): Model may mix languages or add conversational elements
+  - Example: "Hola, ¿y tú? How are you?" (mixed Spanish/English)
+- **Temperature 0.2**: Model provides deterministic, accurate translations
+  - Example: "Hello, how are you?" (pure English)
+
+Lower temperature reduces creativity and increases consistency, which is ideal for translation tasks.
+
+### Recommended Models for Translation
+
+| Model | Size | Best For | Translation Quality |
+|-------|------|----------|-------------------|
+| **qwen2.5:3b** ⭐ | ~2GB | General translation | Excellent |
+| **aya-expanse:8b** | ~4.9GB | Best quality | Superior (purpose-built for multilingual) |
+| **qwen2.5:1.5b** | ~1GB | Resource-constrained devices | Good |
 
 ## Interrupt Mode: Handling Acoustic Feedback
 
@@ -708,8 +806,8 @@ For Linux CUDA builds, three files must stay in sync:
 
 | File | What to Update | Current Value |
 |------|----------------|---------------|
-| `go.mod` | `sherpa-onnx-go-linux` and `sherpa-onnx-go-macos` versions | `v1.12.22` |
-| `scripts/build.sh` | `SHERPA_VERSION` variable | `v1.12.22` |
+| `go.mod` | `sherpa-onnx-go-linux` and `sherpa-onnx-go-macos` versions | `v1.12.23` |
+| `scripts/build.sh` | `SHERPA_VERSION` variable | `v1.12.23` |
 
 The build script includes a **sanity check** that fails with clear instructions if versions mismatch.
 

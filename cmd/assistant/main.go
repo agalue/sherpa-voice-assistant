@@ -50,6 +50,7 @@ func main() {
 		SystemPrompt: cfg.SystemPrompt,
 		Verbose:      cfg.Verbose,
 		MaxHistory:   cfg.MaxHistory,
+		Temperature:  cfg.Temperature,
 	})
 	if err != nil {
 		log.Fatalf("Failed to create LLM client: %v", err)

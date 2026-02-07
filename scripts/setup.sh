@@ -19,6 +19,23 @@ echo -e "${GREEN}║     Voice Assistant Setup - Model Download Script         �
 echo -e "${GREEN}╚═══════════════════════════════════════════════════════════╝${NC}"
 echo
 
+# Check for required dependencies
+check_dependencies() {
+    local missing=()
+
+    for cmd in curl tar; do
+        if ! command -v "$cmd" &> /dev/null; then
+            missing+=("$cmd")
+        fi
+    done
+
+    if [[ ${#missing[@]} -ne 0 ]]; then
+        echo -e "${RED}✗ Missing required tools: ${missing[*]}${NC}"
+        echo -e "${RED}  Please install them before continuing.${NC}"
+        exit 1
+    fi
+}
+
 # Detect platform
 detect_platform() {
     local os=$(uname -s)
@@ -109,6 +126,7 @@ detect_cuda() {
     fi
 }
 
+check_dependencies
 detect_platform
 echo -e "${BLUE}Platform: ${PLATFORM} (${ARCH})${NC}"
 echo -e "${BLUE}Recommended provider: ${PROVIDER}${NC}"
@@ -160,8 +178,8 @@ mkdir -p "${MODELS_DIR}/tts"
 # Base URL for sherpa-onnx releases
 SHERPA_BASE="https://github.com/k2-fsa/sherpa-onnx/releases/download"
 
-# Function to download and extract
-download_model() {
+# Function to download and extract (using temp directory for safety)
+download_and_extract() {
     local url="$1"
     local output_dir="$2"
     local filename=$(basename "$url")
@@ -169,29 +187,61 @@ download_model() {
     echo -e "${YELLOW}Downloading: ${filename}${NC}"
 
     if [[ "$filename" == *.tar.bz2 ]]; then
-        curl -L "$url" | tar -xjf - -C "$output_dir"
+        local tmp_dir=$(mktemp -d)
+        trap "rm -rf $tmp_dir" RETURN
+        
+        curl -L "$url" -o "${tmp_dir}/${filename}"
+        tar -xjf "${tmp_dir}/${filename}" -C "${tmp_dir}"
+        
+        # Move extracted content to output directory
+        local extracted_dir=$(find "${tmp_dir}" -mindepth 1 -maxdepth 1 -type d | head -n1)
+        if [[ -n "$extracted_dir" ]]; then
+            cp -r "${extracted_dir}"/* "${output_dir}/"
+        fi
     elif [[ "$filename" == *.onnx ]]; then
         curl -L "$url" -o "${output_dir}/${filename}"
-    else
-        curl -L -O "$url"
     fi
 
     echo -e "${GREEN}✓ Downloaded: ${filename}${NC}"
 }
 
+# Function to check Ollama installation and model availability
+check_ollama() {
+    echo
+    echo -e "${GREEN}Checking Ollama installation...${NC}"
+    
+    if ! command -v ollama &> /dev/null; then
+        echo -e "${YELLOW}⚠ Ollama is not installed${NC}"
+        echo -e "${YELLOW}  Install from: https://ollama.ai${NC}"
+        echo -e "${YELLOW}  Then run: ollama pull gemma3:1b${NC}"
+        return
+    fi
+    
+    echo -e "${GREEN}✓ Ollama is installed${NC}"
+    
+    # Check if default model is available
+    if ! ollama list | grep -q "gemma3:1b"; then
+        echo -e "${YELLOW}⚠ Default model (gemma3:1b) not found${NC}"
+        echo -e "${YELLOW}  Run: ollama pull gemma3:1b${NC}"
+    else
+        echo -e "${GREEN}✓ Default model (gemma3:1b) is available${NC}"
+    fi
+}
+
 # 1. Download Silero VAD
 echo
-echo -e "${GREEN}[1/3] Downloading Silero VAD model...${NC}"
+echo -e "${GREEN}[1/4] Downloading Silero VAD model...${NC}"
 VAD_URL="${SHERPA_BASE}/asr-models/silero_vad.onnx"
 if [[ "$FORCE_DOWNLOAD" = false && -f "${MODELS_DIR}/silero_vad.onnx" ]]; then
     echo -e "${YELLOW}Silero VAD already exists, skipping...${NC}"
 else
-    download_model "$VAD_URL" "${MODELS_DIR}"
+    curl -L "$VAD_URL" -o "${MODELS_DIR}/silero_vad.onnx"
+    echo -e "${GREEN}✓ Silero VAD model installed${NC}"
 fi
 
 # 2. Download Whisper model (multilingual small - supports 99 languages)
 echo
-echo -e "${GREEN}[2/3] Downloading Whisper STT model (small multilingual)...${NC}"
+echo -e "${GREEN}[2/4] Downloading Whisper STT model (small multilingual)...${NC}"
 WHISPER_URL="${SHERPA_BASE}/asr-models/sherpa-onnx-whisper-small.tar.bz2"
 WHISPER_DIR="${MODELS_DIR}/whisper"
 
@@ -199,21 +249,25 @@ if [[ "$FORCE_DOWNLOAD" = false && -f "${WHISPER_DIR}/whisper-small-encoder.int8
     echo -e "${YELLOW}Whisper model already exists, skipping...${NC}"
 else
     echo -e "${YELLOW}This may take a few minutes...${NC}"
-    cd "${MODELS_DIR}"
-    curl -L "$WHISPER_URL" | tar -xjf -
+    
+    tmp_dir=$(mktemp -d)
+    
+    curl -L "$WHISPER_URL" -o "${tmp_dir}/whisper.tar.bz2"
+    tar -xjf "${tmp_dir}/whisper.tar.bz2" -C "${tmp_dir}"
 
     # Move only int8 quantized models (smaller, faster)
-    mv sherpa-onnx-whisper-small/small-encoder.int8.onnx "${WHISPER_DIR}/whisper-small-encoder.int8.onnx"
-    mv sherpa-onnx-whisper-small/small-decoder.int8.onnx "${WHISPER_DIR}/whisper-small-decoder.int8.onnx"
-    mv sherpa-onnx-whisper-small/small-tokens.txt "${WHISPER_DIR}/whisper-small-tokens.txt"
-    rm -rf sherpa-onnx-whisper-small
+    cp "${tmp_dir}/sherpa-onnx-whisper-small/small-encoder.int8.onnx" "${WHISPER_DIR}/whisper-small-encoder.int8.onnx"
+    cp "${tmp_dir}/sherpa-onnx-whisper-small/small-decoder.int8.onnx" "${WHISPER_DIR}/whisper-small-decoder.int8.onnx"
+    cp "${tmp_dir}/sherpa-onnx-whisper-small/small-tokens.txt" "${WHISPER_DIR}/whisper-small-tokens.txt"
+    
+    rm -rf "${tmp_dir}"
 
     echo -e "${GREEN}✓ Whisper model installed${NC}"
 fi
 
 # 3. Download Kokoro TTS model (multi-lang v1.0 - supports CoreML on macOS)
 echo
-echo -e "${GREEN}[3/3] Downloading Kokoro TTS model (kokoro-multi-lang-v1_0)...${NC}"
+echo -e "${GREEN}[3/4] Downloading Kokoro TTS model (kokoro-multi-lang-v1_0)...${NC}"
 TTS_URL="${SHERPA_BASE}/tts-models/kokoro-multi-lang-v1_0.tar.bz2"
 TTS_DIR="${MODELS_DIR}/tts"
 KOKORO_DIR="${TTS_DIR}/kokoro-multi-lang-v1_0"
@@ -222,17 +276,40 @@ if [[ "$FORCE_DOWNLOAD" = false && -f "${KOKORO_DIR}/model.onnx" ]]; then
     echo -e "${YELLOW}Kokoro TTS model already exists, skipping...${NC}"
 else
     echo -e "${YELLOW}This may take a few minutes (~333MB download)...${NC}"
-    cd "${MODELS_DIR}"
-    curl -L "$TTS_URL" | tar -xjf -
+    
+    tmp_dir=$(mktemp -d)
+    
+    curl -L "$TTS_URL" -o "${tmp_dir}/kokoro.tar.bz2"
+    tar -xjf "${tmp_dir}/kokoro.tar.bz2" -C "${tmp_dir}"
 
     # Move extracted directory to tts folder
-    if [[ -d "kokoro-multi-lang-v1_0" ]]; then
-        mkdir -p "${TTS_DIR}"
-        rm -rf "${KOKORO_DIR}"
-        mv kokoro-multi-lang-v1_0 "${KOKORO_DIR}"
-    fi
+    rm -rf "${KOKORO_DIR}"
+    mv "${tmp_dir}/kokoro-multi-lang-v1_0" "${KOKORO_DIR}"
+    
+    rm -rf "${tmp_dir}"
 
     echo -e "${GREEN}✓ Kokoro TTS model installed${NC}"
+fi
+
+# 4. Download espeak-ng data if not present in Kokoro
+echo
+echo -e "${GREEN}[4/4] Checking espeak-ng data...${NC}"
+ESPEAK_DIR="${KOKORO_DIR}/espeak-ng-data"
+
+if [[ -d "${ESPEAK_DIR}" ]]; then
+    echo -e "${YELLOW}espeak-ng data present in Kokoro model, skipping...${NC}"
+else
+    echo -e "${YELLOW}Downloading espeak-ng data...${NC}"
+    ESPEAK_URL="${SHERPA_BASE}/tts-models/espeak-ng-data.tar.bz2"
+    
+    tmp_dir=$(mktemp -d)
+    
+    curl -L "$ESPEAK_URL" -o "${tmp_dir}/espeak-ng-data.tar.bz2"
+    tar -xjf "${tmp_dir}/espeak-ng-data.tar.bz2" -C "${KOKORO_DIR}"
+    
+    rm -rf "${tmp_dir}"
+    
+    echo -e "${GREEN}✓ espeak-ng data installed${NC}"
 fi
 
 # Verify installation
@@ -259,6 +336,9 @@ check_file "${MODELS_DIR}/whisper/whisper-small-tokens.txt"
 check_file "${KOKORO_DIR}/model.onnx"
 check_file "${KOKORO_DIR}/voices.bin"
 check_file "${KOKORO_DIR}/tokens.txt"
+
+# Check Ollama after model installation
+check_ollama
 
 echo
 if [[ ${#MISSING_FILES[@]} -eq 0 ]]; then

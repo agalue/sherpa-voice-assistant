@@ -82,6 +82,9 @@ func NewRecognizer(cfg *Config) (*Recognizer, error) {
 	vadConfig.SampleRate = cfg.SampleRate
 	vadConfig.NumThreads = cfg.VADThreads
 	vadConfig.Debug = 0
+	if cfg.Verbose {
+		vadConfig.Debug = 1
+	}
 
 	// Buffer audio for VAD
 	vad := sherpa.NewVoiceActivityDetector(vadConfig, VADBufferSize)
@@ -103,9 +106,12 @@ func NewRecognizer(cfg *Config) (*Recognizer, error) {
 	recognizerConfig.ModelConfig.Whisper.TailPaddings = -1 // Use default
 	recognizerConfig.ModelConfig.Tokens = cfg.WhisperTokens
 	recognizerConfig.ModelConfig.NumThreads = cfg.STTThreads
-	recognizerConfig.ModelConfig.Debug = 0
 	recognizerConfig.ModelConfig.Provider = cfg.Provider // Hardware acceleration
 	recognizerConfig.DecodingMethod = "greedy_search"
+	recognizerConfig.ModelConfig.Debug = 0
+	if cfg.Verbose {
+		recognizerConfig.ModelConfig.Debug = 1
+	}
 
 	recognizer := sherpa.NewOfflineRecognizer(recognizerConfig)
 	if recognizer == nil {

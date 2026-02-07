@@ -11,6 +11,8 @@ A real-time voice assistant that runs entirely locally implemented in Rust based
 - **Cross-Platform**: Runs on macOS and Linux with hardware acceleration support
 - **Low Latency**: Streaming TTS and interrupt support for responsive interaction
 - **Multilingual**: Both STT and TTS support multiple languages (English, Spanish, French, German, etc.)
+- **Live Translation**: Zero-code configuration for real-time language translation (see [main README](../README.md#live-translation-use-case))
+- **Configurable Temperature**: Adjustable LLM temperature for translation vs. conversational tasks
 - **Shared Assets**: Models stored in `~/.voice-assistant` are shared with the Go implementation
 
 ## Architecture
@@ -29,22 +31,7 @@ flowchart LR
 
 ## Requirements
 
-### Tested Hardware
-
-This solution has been designed and tested on the following platforms:
-
-| Device | CPU | Memory | Audio Device | Notes |
-|--------|-----|--------|--------------|-------|
-| **Apple Mac Mini M4** | Apple M4 (10-core) | 16GB unified | AirPods Pro | Full CoreML acceleration (ANE) |
-| **NVIDIA Jetson Orin Nano Super** | ARM Cortex-A78AE | 8GB unified | AirPods Pro | Full CUDA acceleration |
-
-### Minimum Hardware Requirements
-
-- **Operating System**: macOS 11+ or Linux (Ubuntu 20.04+, Fedora 34+)
-- **Memory**: 8GB minimum (unified memory recommended)
-- **Storage**: ~2GB for models
-- **Audio**: Bluetooth audio devices (tested with AirPods Pro) or USB/built-in microphone and speakers
-- **GPU/Accelerator**: Apple Silicon (M1/M2/M3/M4) with ANE, or NVIDIA GPU with CUDA support
+For tested hardware platforms and minimum requirements, see the [main README](../README.md#tested-hardware).
 
 ### Software Requirements
 
@@ -113,118 +100,31 @@ cargo build --release
 
 ## Configuration
 
-## Multi-Language Support
+### Multi-Language Support
 
-Both Whisper (STT) and Kokoro (TTS) support multiple languages. The assistant can understand and respond in Spanish, French, Italian, Portuguese, Japanese, Chinese, and more.
+Both Whisper (STT) and Kokoro (TTS) support multiple languages. For complete documentation on:
+- Available languages and voices (53 voices across 9 languages)
+- Language-specific examples (Spanish, French, Japanese, etc.)
+- Multilingual LLM models (qwen2.5, aya-expanse, etc.)
 
-### How It Works
+See the [main README Multi-Language Support section](../README.md#multi-language-support).
 
-1. **Speech Recognition (STT)**: Set your language with `--stt-language` (e.g., `es` for Spanish)
-2. **Text-to-Speech (TTS)**: Voice language is **automatically detected** from the voice name prefix:
-   - `ef_*/em_*` → Spanish (`es`)
-   - `ff_*` → French (`fr`)
-   - `hf_*/hm_*` → Hindi (`hi`)
-   - `if_*/im_*` → Italian (`it`)
-   - `jf_*/jm_*` → Japanese (`ja`)
-   - `pf_*/pm_*` → Portuguese BR (`pt-br`)
-   - `af_*/am_*` → American English
-   - `bf_*/bm_*` → British English
-   - `zf_*/zm_*` → Chinese (Mandarin)
-
-3. **LLM**: Use a multilingual model like `qwen2.5:3b` for proper language matching
-
-### Complete Spanish Example
-
-To use the assistant entirely in Spanish:
-
+**Rust-specific usage:**
 ```bash
-# 1. Pull a multilingual LLM model (one time)
-ollama pull qwen2.5:3b
-
-# 2. Run with Spanish speech recognition + Spanish TTS voice
-# macOS or Linux CPU:
+# Spanish example - macOS or Linux CPU
 ./target/release/voice-assistant \
   --ollama-model qwen2.5:3b \
   --stt-language es \
   --tts-voice ef_dora \
   --tts-speaker-id 28
 
-# Linux with CUDA:
+# Spanish example - Linux with CUDA
 ./run-voice-assistant.sh \
   --ollama-model qwen2.5:3b \
   --stt-language es \
   --tts-voice ef_dora \
   --tts-speaker-id 28
 ```
-
-**What happens:**
-- You speak in Spanish → Whisper transcribes it
-- Qwen2.5 responds in Spanish (it automatically detects the input language)
-- Kokoro synthesizes the response with the Spanish female voice (ef_dora)
-
-### Available Languages & Voices
-
-Whisper supports 99 languages. Here are the most common with their Kokoro TTS voices:
-
-| Language | STT Code | TTS Voice Options | Speaker IDs |
-|----------|----------|------------------|-------------|
-| **Spanish** | `es` | `ef_dora` (female), `em_alex` (male) | 28, 29 |
-| **French** | `fr` | `ff_siwis` (female) | 33 |
-| **Italian** | `it` | `if_*`, `im_*` voices | varies |
-| **Portuguese** | `pt` | `pf_*`, `pm_*` voices | varies |
-| **Japanese** | `ja` | `jf_*`, `jm_*` voices | varies |
-| **Chinese** | `zh` | `zf_*`, `zm_*` voices | varies |
-| **Hindi** | `hi` | `hf_*`, `hm_*` voices | varies |
-| **English (US)** | `en` | `af_bella`, `am_michael`, etc. | 2, 16, ... |
-| **English (UK)** | `en` | `bf_emma`, `bm_george`, etc. | 21, 26, ... |
-
-For all 53 available voices: `./voice-assistant --list-voices`
-
-### Multilingual LLM Models
-
-The default `gemma3:1b` model has limited multilingual support. Use these instead:
-
-| Model | Size | Languages | Best For |
-|-------|------|-----------|----------|
-| **qwen2.5:3b** ⭐ | ~2GB | Excellent for 15+ languages | Recommended |
-| **qwen2.5:1.5b** | ~1GB | Good for 15+ languages | Faster, smaller |
-| **aya-expanse:8b** | ~4.9GB | Purpose-built for 23+ languages | Best quality |
-| **gemma2:2b** | ~1.6GB | Better than gemma3:1b | Alternative |
-
-### More Examples
-
-```bash
-# French (automatic language in response)
-# macOS or Linux CPU:
-./target/release/voice-assistant \
-  --ollama-model qwen2.5:3b \
-  --stt-language fr \
-  --tts-voice ff_siwis \
-  --tts-speaker-id 33
-
-# Linux with CUDA:
-./run-voice-assistant.sh \
-  --ollama-model qwen2.5:3b \
-  --stt-language fr \
-  --tts-voice ff_siwis \
-  --tts-speaker-id 33
-
-# Auto-detect input language (English, Spanish, French, etc.)
-./target/release/voice-assistant \
-  --ollama-model qwen2.5:3b \
-  --stt-language auto \
-  --tts-voice af_bella \
-  --tts-speaker-id 2
-
-# Japanese
-./target/release/voice-assistant \
-  --ollama-model qwen2.5:3b \
-  --stt-language ja \
-  --tts-voice jf_* \
-  --tts-speaker-id <id>
-```
-
-**Note**: Qwen models automatically respond in the same language as your input without needing to modify the system prompt.
 
 ### Environment Variables
 
@@ -262,6 +162,15 @@ export OLLAMA_MODEL=gemma3:1b
 # Verbose logging
 ./target/release/voice-assistant -v
 
+# Live translation (Spanish to English) with lower temperature for consistency
+./target/release/voice-assistant \
+  --ollama-model qwen2.5:3b \
+  --stt-language es \
+  --tts-voice af_bella \
+  --tts-speaker-id 2 \
+  --temperature 0.2 \
+  --system-prompt "You are a Spanish-to-English translator. Translate the following Spanish text to natural English. Output only the English translation. NEVER use markdown or special formatting."
+
 # Force CPU provider for STT (useful on devices with limited GPU memory like Jetson Nano)
 ./target/release/voice-assistant --stt-provider cpu
 
@@ -274,17 +183,14 @@ export OLLAMA_MODEL=gemma3:1b
 
 ### Provider Selection
 
-The application automatically detects available hardware acceleration:
-- **macOS**: Uses CoreML (Apple Neural Engine) by default
-- **Linux with NVIDIA GPU**: Uses CUDA by default
-- **Linux without GPU**: Uses CPU by default
+Hardware acceleration is automatically detected (CoreML on macOS, CUDA on Linux with GPU, CPU fallback). For detailed information on hardware acceleration, see the [main README Hardware Acceleration section](../README.md#hardware-acceleration-details).
 
-You can override with `--provider`, `--stt-provider`, or `--tts-provider`:
-- `cpu` - Use CPU only (slower but works everywhere)
-- `cuda` - Use NVIDIA CUDA (requires CUDA toolkit)
-- `coreml` - Use Apple CoreML (macOS only)
+**Rust CLI flags** (note: Go implementation uses single dash `-provider`, Rust uses double dash):
+- `--provider` - Override both STT and TTS
+- `--stt-provider` - Override STT only
+- `--tts-provider` - Override TTS only
 
-**Note for Jetson Nano**: The GPU has limited memory (4GB). If you see CUDA memory errors, use `--stt-provider cpu` to run Whisper on CPU while keeping TTS on CUDA.
+Supported values: `cpu`, `cuda`, `coreml`
 
 ## Project Structure
 
@@ -347,44 +253,19 @@ Explicitly use CPU:
 
 ## TTS Voices
 
-Kokoro TTS includes 53 built-in voices across 9 languages. Use the `--tts-voice` and `--tts-speaker-id` flags:
+Kokoro TTS includes 53 built-in voices across 9 languages. For the complete list of voices, quality grades, and descriptions, see the [main README TTS Voices section](../README.md#adding-tts-voices).
 
-```bash
-# Use American female voice (default, high quality)
-./target/release/voice-assistant --tts-voice af_bella --tts-speaker-id 2
-
-# Use American female voice (flagship)
-./target/release/voice-assistant --tts-voice af_heart --tts-speaker-id 3
-
-# Use British female voice (recommended)
-./target/release/voice-assistant --tts-voice bf_emma --tts-speaker-id 21
-
-# Use American male voice
-./target/release/voice-assistant --tts-voice am_adam --tts-speaker-id 11
-```
-
-### Viewing Available Voices
-
-To see all 53 available Kokoro voices with their speaker IDs, quality grades, and descriptions:
-
+**Rust-specific usage:**
 ```bash
 # List all voices
 ./target/release/voice-assistant --list-voices
 
 # Get details for a specific voice
 ./target/release/voice-assistant --voice-info bf_emma
+
+# Use a specific voice
+./target/release/voice-assistant --tts-voice af_bella --tts-speaker-id 2
 ```
-
-### Popular Voices
-
-| Voice | Speaker ID | Quality | Accent | Description |
-|-------|-----------|---------|--------|-------------|
-| `af_heart` | 3 | A | American | Female, flagship voice |
-| `af_bella` | 2 | A- | American | Female, high quality |
-| `bf_emma` | 21 | B- | British | Female, recommended (default) |
-| `bf_isabella` | 22 | C | British | Female, medium quality |
-| `am_adam` | 11 | F+ | American | Male, basic quality |
-| `am_michael` | 16 | C+ | American | Male, medium quality |
 
 ## Upgrading Dependencies
 
@@ -568,15 +449,7 @@ Both implementations share the same models and provide similar core functionalit
 
 ## Acknowledgments
 
-This implementation builds upon excellent open-source libraries and models.
-
-### Core Libraries & Models
-
-- [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) - Speech recognition and synthesis framework (Apache-2.0)
-- [Silero VAD](https://github.com/snakers4/silero-vad) - Voice activity detection model (MIT)
-- [OpenAI Whisper](https://github.com/openai/whisper) - Multilingual speech recognition model (MIT)
-- [Kokoro](https://huggingface.co/hexgrad/Kokoro-82M) - Expressive neural text-to-speech model (MIT/Apache-2.0)
-- [Ollama](https://ollama.ai/) - Local LLM inference engine (MIT)
+This implementation builds upon excellent open-source libraries and models. For core libraries and models (sherpa-onnx, Silero VAD, Whisper, Kokoro, Ollama), see the [main README Acknowledgments section](../README.md#acknowledgments).
 
 ### Rust Implementation Dependencies
 

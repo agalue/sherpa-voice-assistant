@@ -269,7 +269,7 @@ if [[ "$USE_CUDA" == "true" && "$OS" == "Linux" ]]; then
     # IMPORTANT: This version must match the sherpa-onnx-go-linux/macos versions in go.mod
     # The sanity check below will fail the build if they drift apart.
     # See README.md "Upgrading Dependencies" for the upgrade procedure.
-    SHERPA_VERSION="v1.12.22"
+    SHERPA_VERSION="v1.12.23"
     BUILD_MARKER="$SHERPA_INSTALL_DIR/.build-complete-${SHERPA_VERSION}"
 
     # Verify go.mod version matches before building

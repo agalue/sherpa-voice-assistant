@@ -14,12 +14,12 @@ import (
 
 // Client is an Ollama API client for LLM interactions.
 type Client struct {
-	client       *api.Client     // Official Ollama Go client
-	model        string          // LLM model name (e.g., "gemma3:1b")
-	systemPrompt string          // System prompt for conversation context
-	history      []api.Message   // Conversation history
-	verbose      bool            // Enable verbose logging
-	maxHistory   int             // Maximum conversation history length
+	client      *api.Client   // Official Ollama Go client
+	model       string        // LLM model name (e.g., "gemma3:1b")
+	history     []api.Message // Conversation history (system prompt at index 0)
+	verbose     bool          // Enable verbose logging
+	maxHistory  int           // Maximum conversation history length
+	temperature float32       // LLM temperature
 }
 
 // Config holds LLM client configuration.
@@ -29,6 +29,7 @@ type Config struct {
 	SystemPrompt string
 	Verbose      bool
 	MaxHistory   int
+	Temperature  float32 // LLM temperature for controlling randomness
 }
 
 // NewClient creates a new Ollama client with optimized connection pooling.
@@ -59,32 +60,27 @@ func NewClient(cfg *Config) (*Client, error) {
 	}
 	client := api.NewClient(parsedURL, httpClient)
 
+	// Initialize history with system prompt at index 0
+	history := make([]api.Message, 0, 1)
+	history = append(history, api.Message{
+		Role:    "system",
+		Content: cfg.SystemPrompt,
+	})
+
 	return &Client{
-		client:       client,
-		model:        cfg.Model,
-		systemPrompt: cfg.SystemPrompt,
-		history:      make([]api.Message, 0),
-		verbose:      cfg.Verbose,
-		maxHistory:   maxHistory,
+		client:      client,
+		model:       cfg.Model,
+		history:     history,
+		verbose:     cfg.Verbose,
+		maxHistory:  maxHistory,
+		temperature: cfg.Temperature,
 	}, nil
 }
 
 // Chat sends a message and returns the response.
 func (c *Client) Chat(ctx context.Context, userMessage string) (string, error) {
-	// Build messages array
-	messages := make([]api.Message, 0, len(c.history)+2)
-
-	// Add system prompt
-	messages = append(messages, api.Message{
-		Role:    "system",
-		Content: c.systemPrompt,
-	})
-
-	// Add conversation history
-	messages = append(messages, c.history...)
-
-	// Add current user message
-	messages = append(messages, api.Message{
+	// Append user message to history (system prompt already at index 0)
+	c.history = append(c.history, api.Message{
 		Role:    "user",
 		Content: userMessage,
 	})
@@ -95,10 +91,10 @@ func (c *Client) Chat(ctx context.Context, userMessage string) (string, error) {
 	var response api.ChatResponse
 	err := c.client.Chat(ctx, &api.ChatRequest{
 		Model:    c.model,
-		Messages: messages,
+		Messages: c.history, // Pass history directly (includes system prompt)
 		Stream:   &stream,
 		Options: map[string]any{
-			"temperature": 0.7,
+			"temperature": c.temperature,
 			"num_predict": 150,  // Limit response length for voice output
 			"num_ctx":     1024, // Reduced context window to save GPU memory
 		},
@@ -112,11 +108,7 @@ func (c *Client) Chat(ctx context.Context, userMessage string) (string, error) {
 
 	finalResponse := strings.TrimSpace(response.Message.Content)
 
-	// Update history with user message and assistant response
-	c.history = append(c.history, api.Message{
-		Role:    "user",
-		Content: userMessage,
-	})
+	// Append assistant response to history
 	c.history = append(c.history, api.Message{
 		Role:    "assistant",
 		Content: finalResponse,
@@ -128,16 +120,18 @@ func (c *Client) Chat(ctx context.Context, userMessage string) (string, error) {
 	return finalResponse, nil
 }
 
-// ClearHistory clears the conversation history.
+// ClearHistory clears the conversation history (preserves system prompt).
 func (c *Client) ClearHistory() {
-	c.history = make([]api.Message, 0)
+	c.history = c.history[:1] // Keep only system prompt at index 0
 }
 
-// trimHistory keeps only the last N message pairs.
+// trimHistory keeps only the last N message pairs (preserves system prompt).
 func (c *Client) trimHistory() {
-	maxMessages := c.maxHistory * 2 // user + assistant pairs
+	maxMessages := 1 + c.maxHistory*2 // system + user/assistant pairs
 	if len(c.history) > maxMessages {
-		c.history = c.history[len(c.history)-maxMessages:]
+		// Keep system prompt (index 0) and last N pairs
+		systemMsg := c.history[0]
+		c.history = append([]api.Message{systemMsg}, c.history[len(c.history)-c.maxHistory*2:]...)
 	}
 }
 
