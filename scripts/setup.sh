@@ -187,17 +187,19 @@ download_and_extract() {
     echo -e "${YELLOW}Downloading: ${filename}${NC}"
 
     if [[ "$filename" == *.tar.bz2 ]]; then
-        local tmp_dir=$(mktemp -d)
-        trap "rm -rf $tmp_dir" RETURN
-        
-        curl -L "$url" -o "${tmp_dir}/${filename}"
-        tar -xjf "${tmp_dir}/${filename}" -C "${tmp_dir}"
-        
-        # Move extracted content to output directory
-        local extracted_dir=$(find "${tmp_dir}" -mindepth 1 -maxdepth 1 -type d | head -n1)
-        if [[ -n "$extracted_dir" ]]; then
-            cp -r "${extracted_dir}"/* "${output_dir}/"
-        fi
+        (
+            tmp_dir=$(mktemp -d)
+            trap 'rm -rf "$tmp_dir"' EXIT
+
+            curl -L "$url" -o "${tmp_dir}/${filename}"
+            tar -xjf "${tmp_dir}/${filename}" -C "${tmp_dir}"
+
+            # Move extracted content to output directory
+            extracted_dir=$(find "${tmp_dir}" -mindepth 1 -maxdepth 1 -type d | head -n1)
+            if [[ -n "$extracted_dir" ]]; then
+                cp -r "${extracted_dir}"/* "${output_dir}/"
+            fi
+        )
     elif [[ "$filename" == *.onnx ]]; then
         curl -L "$url" -o "${output_dir}/${filename}"
     fi
