@@ -153,6 +153,7 @@ impl WeatherTool {
             info!("Failed to build HTTP client: {}", e);
             WeatherError
         })?;
+        // Note: ip-api.com free tier doesn't support HTTPS
         let ipgeo = cli
             .get(format!("http://ip-api.com/json/{}", ipaddr))
             .send()

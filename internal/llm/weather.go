@@ -113,6 +113,7 @@ func GetCurrentIP(ctx context.Context) (string, error) {
 // GetCoordsFromIP gets coordinates from IP address using geolocation API.
 func GetCoordsFromIP(ctx context.Context, ipAddr string) (lat, lon float64, location string, err error) {
 	client := &http.Client{Timeout: 5 * time.Second}
+	// Note: ip-api.com free tier doesn't support HTTPS
 	url := fmt.Sprintf("http://ip-api.com/json/%s", ipAddr)
 
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
