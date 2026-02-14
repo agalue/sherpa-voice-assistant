@@ -177,8 +177,14 @@ func (c *Client) Chat(ctx context.Context, userMessage string) (string, error) {
 		// Loop continues: LLM will see tool results and generate final response
 	}
 
-	// If we hit max iterations, return the last response
-	return "I apologize, but I couldn't complete the task within the allowed time.", nil
+	// If we hit max iterations, append a final assistant message and return an error
+	finalMsg := "I apologize, but I couldn't complete the task within the allowed time."
+	c.history = append(c.history, api.Message{
+		Role:    "assistant",
+		Content: finalMsg,
+	})
+	c.trimHistory()
+	return finalMsg, fmt.Errorf("max agentic iterations (%d) exceeded", maxIterations)
 }
 
 // ClearHistory clears the conversation history (preserves system prompt).
