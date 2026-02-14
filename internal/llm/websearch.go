@@ -207,8 +207,10 @@ func FormatResults(results []SearxngResult) string {
 		result := results[i]
 		// More direct: just title and content without numbering/preamble
 		content := result.Content
-		if len(content) > 200 {
-			content = content[:200]
+		// Truncate by runes (Unicode code points), not bytes, to avoid breaking UTF-8 characters
+		runes := []rune(content)
+		if len(runes) > 200 {
+			content = string(runes[:200])
 		}
 		output.WriteString(fmt.Sprintf("%s. %s. ", result.Title, content))
 	}
