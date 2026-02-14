@@ -6,7 +6,8 @@ A real-time voice assistant that runs entirely locally implemented in Rust based
 
 - **Speech-to-Text**: Whisper-based multilingual speech recognition via sherpa-onnx (99 languages)
 - **Voice Activity Detection**: Silero VAD for detecting when you're speaking
-- **Local LLM**: Ollama integration via RIG for conversational AI
+- **Local LLM**: Ollama integration via RIG for conversational AI with agentic tool calling
+- **Agentic Tools**: Weather information and web search capabilities
 - **Text-to-Speech**: Kokoro multilingual voices for natural, expressive speech synthesis
 - **Cross-Platform**: Runs on macOS and Linux with hardware acceleration support
 - **Low Latency**: Streaming TTS and interrupt support for responsive interaction
@@ -25,6 +26,8 @@ flowchart LR
       VAD --> LLM[LLM<br/>Ollama]
       LLM --> TTS[TTS<br/>Kokoro]
       TTS --> Speaker[🔊 Speaker]
+      LLM -.->|Tool Calls| Tools[🔧 Tools<br/>Weather & Search]
+      Tools -.->|Results| LLM
       TTS -.->|Interrupt on Speech| Capture
    end
 ```
@@ -74,9 +77,11 @@ The setup script is **idempotent** - it won't re-download existing files unless 
 # Install Ollama (if not already installed)
 curl -fsSL https://ollama.ai/install.sh | sh
 
-# Pull the default model
-ollama pull gemma3:1b
+# Pull the default model (supports tool calling + multilingual)
+ollama pull qwen2.5:3b
 ```
+
+**Note**: The default model has changed from `gemma3:1b` to `qwen2.5:3b` to support agentic tool calling for weather and web search.
 
 ### 3. Build and Run
 
@@ -96,6 +101,51 @@ cargo build --release
 
 # Run using the wrapper script (sets up LD_LIBRARY_PATH)
 ./run-voice-assistant.sh
+```
+
+## Agentic Capabilities
+
+The Rust implementation includes **agentic tool calling** using the RIG framework with Ollama. The LLM can proactively use tools to answer questions about information it doesn't have.
+
+### Available Tools
+
+**🌤️ Weather Tool** - Get current weather for any location (Open-Meteo API)  
+**🔍 Web Search Tool** - Search for current information (SearXNG or DuckDuckGo)
+
+For detailed information about:
+- How tool calling works
+- Usage examples (weather, search, general conversation)
+- Required LLM models (qwen2.5:3b recommended)
+- Optional SearXNG setup
+
+See the [main README Agentic Capabilities section](../README.md#agentic-capabilities).
+
+**Rust-specific usage:**
+```bash
+# Run with SearXNG for privacy-focused web search
+./target/release/voice-assistant --searxng-url http://localhost:8080
+
+# Or with CUDA wrapper
+./run-voice-assistant.sh --searxng-url http://localhost:8080
+
+# Use DuckDuckGo fallback (default, no flag needed)
+./target/release/voice-assistant
+```
+
+**Start SearXNG locally (optional):**
+```bash
+# From rust-impl directory (../searxng/settings.yml is included)
+docker run -d \
+  --name searxng \
+  --restart unless-stopped \
+  -p 8080:8080 \
+  -e SEARXNG_BASE_URL=http://localhost:8080/ \
+  -e UWSGI_WORKERS=1 \
+  -e UWSGI_THREADS=2 \
+  --memory=200m \
+  --cpus=0.5 \
+  -v "${PWD}/../searxng:/etc/searxng:rw" \
+  searxng/searxng:latest
 ```
 
 ## Configuration

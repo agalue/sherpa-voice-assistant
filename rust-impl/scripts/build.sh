@@ -563,13 +563,22 @@ if [[ "$OS" == "Darwin" ]]; then
         log_warn "Binary has dynamic library dependencies that may need fixing..."
 
         # Find where the libraries were downloaded by sherpa-rs
+        # On macOS, sherpa-rs uses ~/Library/Caches/sherpa-rs for download-binaries feature
         SHERPA_LIB_DIR=""
-        for dir in "${HOME}/.cache/sherpa-rs" "${PROJECT_DIR}/target/${BUILD_MODE}/build"/sherpa-*/out/lib; do
-            if [[ -d "$dir" ]] && ls "$dir"/*.dylib &>/dev/null 2>&1; then
-                SHERPA_LIB_DIR="$dir"
-                break
-            fi
-        done
+        if [[ -d "${HOME}/Library/Caches/sherpa-rs" ]]; then
+            # Find the lib directory containing libonnxruntime dylibs
+            SHERPA_LIB_DIR=$(find "${HOME}/Library/Caches/sherpa-rs" -name "libonnxruntime.*.dylib" -exec dirname {} \; 2>/dev/null | head -1)
+        fi
+
+        # Fallback to checking build directory
+        if [[ -z "$SHERPA_LIB_DIR" ]]; then
+            for dir in "${HOME}/.cache/sherpa-rs" "${PROJECT_DIR}/target/${BUILD_MODE}/build"/sherpa-*/out/lib; do
+                if [[ -d "$dir" ]] && ls "$dir"/*.dylib &>/dev/null 2>&1; then
+                    SHERPA_LIB_DIR="$dir"
+                    break
+                fi
+            done
+        fi
 
         if [[ -n "$SHERPA_LIB_DIR" ]]; then
             log_info "Found sherpa libraries in: $SHERPA_LIB_DIR"

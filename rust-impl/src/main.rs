@@ -124,7 +124,10 @@ fn spawn_llm_task(
                     // Interrupt any current playback
                     player.interrupt();
 
-                    // Get complete response from LLM
+                    // Indicate thinking/tool usage - LLM may invoke tools automatically
+                    info!("🤔 Analyzing request (may use tools)...");
+
+                    // Get complete response from LLM (RIG handles tool calling automatically)
                     let result = {
                         let mut client = llm_client.lock().await;
                         client.chat(&transcript).await

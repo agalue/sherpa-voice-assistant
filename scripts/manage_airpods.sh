@@ -34,7 +34,7 @@ get_battery() {
     DEVICE_PATH=$(upower -e | grep "bluez_device_$UP_MAC")
     
     if [ -n "$DEVICE_PATH" ]; then
-        echo "--- AirPods Pro 2 Status ---"
+        echo "--- AirPods Status ---"
         upower -i "$DEVICE_PATH" | grep -E "state|percentage|updated" | sed 's/^[ \t]*//'
     else
         echo "[!] Battery data not available. Are the AirPods in your ears?"

@@ -1,0 +1,23 @@
+use_default_settings: true
+
+server:
+  secret_key: "local-development-key-not-for-production"
+  limiter: false  # Disable rate limiting for local use
+  image_proxy: false
+
+search:
+  formats:
+    - html
+    - json  # Enable JSON format
+
+ui:
+  default_locale: ""  # Auto-detect language from query
+
+enabled_plugins:
+  - 'Hash plugin'
+  - 'Self Information'
+  - 'Tracker URL remover'
+
+outgoing:
+  request_timeout: 10.0
+  max_request_timeout: 15.0

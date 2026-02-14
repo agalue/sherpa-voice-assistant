@@ -11,7 +11,8 @@ For the LLM processing, I'm relying on [Ollama](https://ollama.com/), as it work
 - **Voice Activity Detection (VAD)**: Silero-VAD for accurate speech boundary detection
 - **Speech-to-Text (STT)**: Whisper multilingual model for high-quality transcription (99 languages)
 - **Text-to-Speech (TTS)**: Kokoro for natural-sounding voice synthesis with emotional expression
-- **LLM Integration**: Ollama API for conversational AI
+- **LLM Integration**: Ollama API for conversational AI with agentic tool calling
+- **Agentic Tools**: Weather information and web search capabilities
 - **Low Latency**: Optimized for real-time conversation
 - **Interrupt Support**: Optional stop playback when user starts speaking
 - **Wake Word**: Optional wake word activation
@@ -62,6 +63,8 @@ flowchart LR
         B --> C[🧠 LLM<br/>Ollama]
         C --> D[📢 TTS<br/>Kokoro]
         D --> E[🔊 Playback<br/>malgo]
+        C -.->|Tool Calls| F[🔧 Tools<br/>Weather & Search]
+        F -.->|Results| C
     end
     
     E -.->|Interrupt Flag<br/>speech detected| A
@@ -182,11 +185,17 @@ The build script will:
 
 ### 3. Start Ollama
 
-Make sure Ollama is running with a model:
+Make sure Ollama is running with a model that supports tool calling:
 
 ```bash
-ollama run gemma3:1b
+# Pull the recommended model (supports tool calling + multilingual)
+ollama pull qwen2.5:3b
+
+# Start a chat to keep the model loaded
+ollama run qwen2.5:3b
 ```
+
+**Note**: The default model has changed from `gemma3:1b` to `qwen2.5:3b` to support agentic tool calling for weather and web search.
 
 ### 4. Run the Assistant
 
@@ -201,6 +210,128 @@ ollama run gemma3:1b
 ```
 
 The wrapper script sets up `LD_LIBRARY_PATH` for CUDA libraries automatically.
+
+## Agentic Capabilities
+
+The voice assistant includes **agentic tool calling** powered by Ollama's function calling support. The LLM can proactively use tools to answer questions about current information it doesn't know.
+
+### Available Tools
+
+**🌤️ Weather Tool**
+- Get current weather for any location worldwide
+- Supports city-based queries: "What's the weather in Tokyo?"
+- Automatic IP-based geolocation: "What's the weather here?"
+- Uses Open-Meteo API (no API key required)
+
+**🔍 Web Search Tool**
+- Search the web for current information, news, facts, and events
+- Two backends:
+  - **SearXNG** (recommended): Privacy-respecting metasearch engine
+  - **DuckDuckGo** (fallback): Automatic fallback when SearXNG unavailable
+- Returns top 2 results formatted for voice output
+
+### Required LLM Model
+
+Tool calling requires models that support function calling. The default model has been changed to **qwen2.5:3b** which supports:
+- ✅ Multi-lingual conversations (15+ languages)
+- ✅ Tool/function calling
+- ✅ Excellent quality for its size (~2GB)
+
+```bash
+# Pull the default model (one time)
+ollama pull qwen2.5:3b
+
+# Or use a larger model for better quality
+ollama pull qwen2.5:7b
+```
+
+**Other compatible models:**
+- `qwen2.5:1.5b` - Smaller/faster (~1GB)
+- `qwen2.5:7b` - Better quality (~4.7GB)
+- `mistral:7b` - Alternative with tool support
+
+### Usage Examples
+
+**Weather queries:**
+```
+User: "What's the weather in Paris?"
+Assistant: [Uses weather tool] "The weather for Paris, Île-de-France, FR: 
+           Temperature is 12°C, feels like 10°C. Humidity is 75 percent."
+
+User: "What's the weather here?" 
+Assistant: [Uses weather tool with IP geolocation] "The weather for Chapel Hill..."
+```
+
+**Web search queries:**
+```
+User: "Who won the Super Bowl this year?"
+Assistant: [Uses search tool] "The Kansas City Chiefs defeated..."
+
+User: "What's the latest news about AI?"
+Assistant: [Uses search tool] "Recent developments include..."
+```
+
+**General conversation:**
+```
+User: "Tell me a joke"
+Assistant: [No tools needed] "Why did the scarecrow win an award?..."
+```
+
+### Optional: SearXNG Setup
+
+For privacy-focused web search, you can run your own SearXNG instance locally:
+
+**1. Create configuration directory:**
+```bash
+mkdir -p searxng
+```
+
+The `searxng/settings.yml` file is included in the repository with optimized settings for voice assistant usage.
+
+**2. Start SearXNG with Docker:**
+```bash
+docker run -d \
+  --name searxng \
+  --restart unless-stopped \
+  -p 8080:8080 \
+  -e SEARXNG_BASE_URL=http://localhost:8080/ \
+  -e UWSGI_WORKERS=1 \
+  -e UWSGI_THREADS=2 \
+  --memory=200m \
+  --cpus=0.5 \
+  -v "${PWD}/searxng:/etc/searxng:rw" \
+  searxng/searxng:latest
+```
+
+**3. Run voice assistant with SearXNG:**
+```bash
+# Go version
+./voice-assistant -searxng-url http://localhost:8080
+
+# Rust version
+./target/release/voice-assistant --searxng-url http://localhost:8080
+```
+
+**4. Verify SearXNG is working:**
+```bash
+curl "http://localhost:8080/search?q=test&format=json"
+```
+
+**Notes:**
+- SearXNG is **optional** - the assistant falls back to DuckDuckGo if not configured
+- Resource limits (`--memory=200m --cpus=0.5`) keep it lightweight
+- Configuration in `searxng/settings.yml` optimizes for speed over completeness
+- SearXNG aggregates results from multiple search engines (Google, Bing, etc.)
+
+### How Tool Calling Works
+
+1. **User asks a question** requiring external information
+2. **LLM decides** which tool(s) to call (or none)
+3. **Tools execute** and return results
+4. **LLM synthesizes** a natural response from tool results
+5. **TTS speaks** the final answer
+
+The system uses an **agentic loop**: LLM → Tool Calls → Tool Results → LLM → Final Answer. This happens automatically with no user intervention.
 
 ## Multi-Language Support
 
@@ -806,8 +937,8 @@ For Linux CUDA builds, three files must stay in sync:
 
 | File | What to Update | Current Value |
 |------|----------------|---------------|
-| `go.mod` | `sherpa-onnx-go-linux` and `sherpa-onnx-go-macos` versions | `v1.12.23` |
-| `scripts/build.sh` | `SHERPA_VERSION` variable | `v1.12.23` |
+| `go.mod` | `sherpa-onnx-go-linux` and `sherpa-onnx-go-macos` versions | `v1.12.24` |
+| `scripts/build.sh` | `SHERPA_VERSION` variable | `v1.12.24` |
 
 The build script includes a **sanity check** that fails with clear instructions if versions mismatch.
 

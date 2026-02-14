@@ -93,9 +93,13 @@ pub struct AppConfig {
     #[arg(long, short = 'u', env = "OLLAMA_URL", default_value = "http://localhost:11434")]
     pub ollama_url: String,
 
-    /// Ollama model name
-    #[arg(long, short = 'm', env = "OLLAMA_MODEL", default_value = "gemma3:1b")]
+    /// Ollama model name (qwen2.5:3b recommended - multilingual + function calling support)
+    #[arg(long, short = 'm', env = "OLLAMA_MODEL", default_value = "qwen2.5:3b")]
     pub ollama_model: String,
+
+    /// SearXNG instance URL for web search (optional, uses DuckDuckGo if not provided)
+    #[arg(long, env = "SEARXNG_URL")]
+    pub searxng_url: Option<String>,
 
     /// System prompt for the LLM
     #[arg(
@@ -266,10 +270,7 @@ impl AppConfig {
     /// Kokoro TTS supports CoreML on macOS and CUDA on Linux.
     #[allow(clippy::unnecessary_lazy_evaluations)]
     pub fn effective_tts_provider(&self) -> Provider {
-        self.tts_provider.or(self.provider).unwrap_or_else(|| {
-            // Kokoro TTS supports CoreML acceleration on macOS
-            detect_provider()
-        })
+        self.tts_provider.or(self.provider).unwrap_or_else(detect_provider)
     }
 
     /// Get the path to the Whisper encoder model (multilingual).

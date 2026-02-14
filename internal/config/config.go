@@ -77,6 +77,7 @@ type Config struct {
 	SystemPrompt string
 	MaxHistory   int     // Maximum conversation history length
 	Temperature  float32 // LLM temperature (0.0-2.0, lower=deterministic, higher=creative)
+	SearxngURL   string  // Optional SearXNG URL for web search (empty uses DuckDuckGo)
 
 	// Voice assistant settings
 	WakeWord     string
@@ -133,10 +134,11 @@ func DefaultConfig() *Config {
 
 		// LLM defaults
 		OllamaURL:    "http://localhost:11434",
-		OllamaModel:  "gemma3:1b",
+		OllamaModel:  "qwen2.5:3b",
 		SystemPrompt: "You are a helpful voice assistant. Keep responses brief and concise, maximum 2-3 short sentences. Be conversational and natural for speech output. IMPORTANT: Your responses will be read aloud, so you must NEVER use markdown, asterisks, underscores, backticks, brackets, code blocks, bullet points, numbered lists, special characters, or any formatting. Use only plain text with normal punctuation. Speak naturally as if having a conversation.",
 		MaxHistory:   10,
 		Temperature:  0.7, // Default creativity level
+		SearxngURL:   "",  // Empty = use DuckDuckGo fallback
 
 		// TTS defaults (Kokoro af_bella American female voice - highest quality)
 		TTSVoice:     "af_bella", // American female Bella (A- grade, most expressive)
@@ -189,11 +191,12 @@ func ParseFlags() (*Config, error) {
 
 	// LLM settings
 	flag.StringVar(&cfg.OllamaURL, "ollama-url", cfg.OllamaURL, "Ollama API URL")
-	flag.StringVar(&cfg.OllamaModel, "ollama-model", cfg.OllamaModel, "Ollama model name")
+	flag.StringVar(&cfg.OllamaModel, "ollama-model", cfg.OllamaModel, "Ollama model name (must support tool calling, e.g., qwen2.5:3b)")
 	flag.StringVar(&cfg.SystemPrompt, "system-prompt", cfg.SystemPrompt, "System prompt for the LLM")
 	flag.IntVar(&cfg.MaxHistory, "max-history", cfg.MaxHistory, "Maximum conversation history length")
 	temperature := float64(cfg.Temperature)
 	flag.Float64Var(&temperature, "temperature", temperature, "LLM temperature (0.0-2.0). Lower values (0.1-0.3) for translation/factual tasks, higher (0.7-1.0) for creative responses")
+	flag.StringVar(&cfg.SearxngURL, "searxng-url", cfg.SearxngURL, "Optional SearXNG URL for web search (empty uses DuckDuckGo fallback)")
 
 	// TTS settings
 	ttsSpeed := float64(cfg.TTSSpeed)
@@ -442,5 +445,3 @@ func getLanguageForVoice(voiceName string) string {
 
 	return voice.EspeakCode
 }
-
-// PrintVoices and PrintVoiceInfo are now in voices.go with simpler implementation
