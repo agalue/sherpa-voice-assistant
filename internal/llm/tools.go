@@ -19,7 +19,7 @@ func GetToolDefinitions() []api.Tool {
 	weatherProps := api.NewToolPropertiesMap()
 	weatherProps.Set("city", api.ToolProperty{
 		Type:        []string{"string"},
-		Description: "City name. Leave empty/null for IP-based current location.",
+		Description: "City name. Leave empty for IP-based current location.",
 	})
 
 	searchProps := api.NewToolPropertiesMap()
@@ -33,7 +33,7 @@ func GetToolDefinitions() []api.Tool {
 			Type: "function",
 			Function: api.ToolFunction{
 				Name:        "get_weather",
-				Description: "Get current weather for any location. Use this when user asks about weather, temperature, or climate. Leave city empty/null for user's current location via IP geolocation.",
+				Description: "Get current weather for any location. Use this when user asks about weather, temperature, or climate. Leave city empty for user's current location via IP geolocation.",
 				Parameters: api.ToolFunctionParameters{
 					Type:       "object",
 					Properties: weatherProps,
