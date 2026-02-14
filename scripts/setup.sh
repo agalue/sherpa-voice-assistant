@@ -358,7 +358,7 @@ else
         model_name=$(basename "$f" | sed 's/whisper-\(.*\)-encoder.*/\1/')
         echo -e "${GREEN}  - ${model_name}${NC}"
         decoder_path="${MODELS_DIR}/whisper/whisper-${model_name}-decoder.int8.onnx"
-        tokens_path="${MODELS_DIR}/whisper/whisper-${model_name}.tokens"
+        tokens_path="${MODELS_DIR}/whisper/whisper-${model_name}-tokens.txt"
         check_file "${decoder_path}"
         check_file "${tokens_path}"
     done
