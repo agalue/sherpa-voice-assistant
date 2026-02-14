@@ -423,8 +423,48 @@ EOF
         cat > "$PROJECT_DIR/run-voice-assistant.sh" << 'WRAPPER'
 #!/bin/bash
 # Wrapper script to run voice-assistant with proper CUDA library paths
+# Automatically handles Jetson unified memory pre-loading
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Detect if running on Jetson
+IS_JETSON=false
+if [[ -f /etc/nv_tegra_release ]] || [[ -d /usr/lib/aarch64-linux-gnu/tegra ]]; then
+    IS_JETSON=true
+fi
+
+# Pre-load Ollama model on Jetson to prevent memory fragmentation
+if [[ "$IS_JETSON" == "true" ]]; then
+    # Extract model from command line args (look for -ollama-model or --ollama-model)
+    OLLAMA_MODEL=""
+    for ((i=1; i<=$#; i++)); do
+        if [[ "${!i}" == "-ollama-model" || "${!i}" == "--ollama-model" ]]; then
+            j=$((i+1))
+            OLLAMA_MODEL="${!j}"
+            break
+        fi
+    done
+
+    # Default to qwen2.5:1.5b if not specified
+    OLLAMA_MODEL="${OLLAMA_MODEL:-qwen2.5:1.5b}"
+
+    # Check if Ollama is responding
+    if curl -s http://localhost:11434/api/version > /dev/null 2>&1; then
+        # Check if model exists
+        if ollama list 2>/dev/null | grep -q "$OLLAMA_MODEL"; then
+            echo "⚡ Jetson detected: Pre-loading Ollama model $OLLAMA_MODEL..."
+            # Pre-load with reduced context to reserve GPU memory before voice assistant starts
+            curl -s http://localhost:11434/api/generate -d "{
+                \"model\": \"$OLLAMA_MODEL\",
+                \"prompt\": \".\",
+                \"stream\": false,
+                \"options\": {\"num_ctx\": 1024, \"num_predict\": 1}
+            }" > /dev/null 2>&1 && echo "✓ Model pre-loaded"
+        else
+            echo "⚠️  Model $OLLAMA_MODEL not found. Run: ollama pull $OLLAMA_MODEL"
+        fi
+    fi
+fi
 
 # Find CUDA home
 CUDA_HOME="${CUDA_HOME:-}"
@@ -527,7 +567,7 @@ if [[ -f "voice-assistant" ]]; then
     echo "Before running, ensure you have:"
     echo "  1. Downloaded models: ./scripts/setup.sh"
     echo "  2. Started Ollama: ollama serve"
-    echo "  3. Loaded a model: ollama run gemma3:1b"
+    echo "  3. Loaded a model: ollama run qwen2.5:1.5b"
     echo
     if [[ "$USE_CUDA" == "true" && -n "$SHERPA_ONNX_LIB_DIR" ]]; then
         echo -e "${YELLOW}CUDA build notes:${NC}"

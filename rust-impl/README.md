@@ -78,10 +78,10 @@ The setup script is **idempotent** - it won't re-download existing files unless 
 curl -fsSL https://ollama.ai/install.sh | sh
 
 # Pull the default model (supports tool calling + multilingual)
-ollama pull qwen2.5:3b
+ollama pull qwen2.5:1.5b
 ```
 
-**Note**: The default model has changed from `gemma3:1b` to `qwen2.5:3b` to support agentic tool calling for weather and web search.
+**Note**: The default model has changed from `gemma3:1b` to `qwen2.5:1.5b` to support agentic tool calling for weather and web search while keeping memory usage low.
 
 ### 3. Build and Run
 
@@ -115,7 +115,7 @@ The Rust implementation includes **agentic tool calling** using the RIG framewor
 For detailed information about:
 - How tool calling works
 - Usage examples (weather, search, general conversation)
-- Required LLM models (qwen2.5:3b recommended)
+- Required LLM models (qwen2.5:1.5b default, qwen2.5:3b for better quality)
 - Optional SearXNG setup
 
 See the [main README Agentic Capabilities section](../README.md#agentic-capabilities).
@@ -134,19 +134,16 @@ See the [main README Agentic Capabilities section](../README.md#agentic-capabili
 
 **Start SearXNG locally (optional):**
 ```bash
-# From rust-impl directory (../searxng/settings.yml is included)
-docker run -d \
-  --name searxng \
-  --restart unless-stopped \
-  -p 8080:8080 \
-  -e SEARXNG_BASE_URL=http://localhost:8080/ \
-  -e UWSGI_WORKERS=1 \
-  -e UWSGI_THREADS=2 \
-  --memory=200m \
-  --cpus=0.5 \
-  -v "${PWD}/../searxng:/etc/searxng:rw" \
-  searxng/searxng:latest
+# From repository root (searxng/ directory contains docker-compose.yml)
+cd ../searxng
+docker compose up -d
+cd ../rust-impl
+
+# Stop when not needed
+cd ../searxng && docker compose down && cd ../rust-impl
 ```
+
+**Note:** The `searxng/settings.yml` and `searxng/docker-compose.yml` files are included in the repository with optimized settings for minimal resource usage (~384MB RAM, 1 CPU core, Bing search).
 
 ## Configuration
 
@@ -163,14 +160,14 @@ See the [main README Multi-Language Support section](../README.md#multi-language
 ```bash
 # Spanish example - macOS or Linux CPU
 ./target/release/voice-assistant \
-  --ollama-model qwen2.5:3b \
+  --ollama-model qwen2.5:1.5b \
   --stt-language es \
   --tts-voice ef_dora \
   --tts-speaker-id 28
 
 # Spanish example - Linux with CUDA
 ./run-voice-assistant.sh \
-  --ollama-model qwen2.5:3b \
+  --ollama-model qwen2.5:1.5b \
   --stt-language es \
   --tts-voice ef_dora \
   --tts-speaker-id 28
@@ -181,7 +178,7 @@ See the [main README Multi-Language Support section](../README.md#multi-language
 ```bash
 export MODEL_DIR=/path/to/models
 export OLLAMA_URL=http://localhost:11434
-export OLLAMA_MODEL=gemma3:1b
+export OLLAMA_MODEL=qwen2.5:1.5b
 ```
 
 ### Example Usage
@@ -214,7 +211,7 @@ export OLLAMA_MODEL=gemma3:1b
 
 # Live translation (Spanish to English) with lower temperature for consistency
 ./target/release/voice-assistant \
-  --ollama-model qwen2.5:3b \
+  --ollama-model qwen2.5:1.5b \
   --stt-language es \
   --tts-voice af_bella \
   --tts-speaker-id 2 \

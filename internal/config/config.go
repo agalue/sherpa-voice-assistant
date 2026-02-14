@@ -56,6 +56,7 @@ type Config struct {
 	VADModel string // Path to Silero VAD model file
 
 	// Whisper STT model paths
+	WhisperModel   string // Model size (tiny, base, small, medium, large)
 	WhisperEncoder string
 	WhisperDecoder string
 	WhisperTokens  string
@@ -134,7 +135,7 @@ func DefaultConfig() *Config {
 
 		// LLM defaults
 		OllamaURL:    "http://localhost:11434",
-		OllamaModel:  "qwen2.5:3b",
+		OllamaModel:  "qwen2.5:1.5b",
 		SystemPrompt: "You are a helpful voice assistant. Keep responses brief and concise, maximum 2-3 short sentences. Be conversational and natural for speech output. IMPORTANT: Your responses will be read aloud, so you must NEVER use markdown, asterisks, underscores, backticks, brackets, code blocks, bullet points, numbered lists, special characters, or any formatting. Use only plain text with normal punctuation. Speak naturally as if having a conversation.",
 		MaxHistory:   10,
 		Temperature:  0.7, // Default creativity level
@@ -146,7 +147,8 @@ func DefaultConfig() *Config {
 		TTSSpeed:     0.93,
 
 		// STT defaults (Whisper multilingual)
-		STTLanguage: "en", // Default to English for STT
+		WhisperModel: "tiny", // Default to tiny model (fast, memory-efficient)
+		STTLanguage:  "en",   // Default to English for STT
 
 		// No wake word by default (always listening)
 		WakeWord: "",
@@ -191,7 +193,7 @@ func ParseFlags() (*Config, error) {
 
 	// LLM settings
 	flag.StringVar(&cfg.OllamaURL, "ollama-url", cfg.OllamaURL, "Ollama API URL")
-	flag.StringVar(&cfg.OllamaModel, "ollama-model", cfg.OllamaModel, "Ollama model name (must support tool calling, e.g., qwen2.5:3b)")
+	flag.StringVar(&cfg.OllamaModel, "ollama-model", cfg.OllamaModel, "Ollama model name (must support tool calling, e.g., qwen2.5:1.5b, qwen2.5:3b)")
 	flag.StringVar(&cfg.SystemPrompt, "system-prompt", cfg.SystemPrompt, "System prompt for the LLM")
 	flag.IntVar(&cfg.MaxHistory, "max-history", cfg.MaxHistory, "Maximum conversation history length")
 	temperature := float64(cfg.Temperature)
@@ -205,6 +207,7 @@ func ParseFlags() (*Config, error) {
 	flag.IntVar(&cfg.TTSSpeakerID, "tts-speaker-id", cfg.TTSSpeakerID, "TTS speaker ID for Kokoro model (bf_emma=21, af_bella=2)")
 
 	// STT settings
+	flag.StringVar(&cfg.WhisperModel, "whisper-model", cfg.WhisperModel, "Whisper model size (tiny, base, small, medium, large). Use 'tiny' for memory-constrained devices like Jetson")
 	flag.StringVar(&cfg.STTLanguage, "stt-language", cfg.STTLanguage, "STT language code (e.g., 'en', 'es', 'fr', 'auto' for detection)")
 
 	// Hardware acceleration
@@ -292,9 +295,9 @@ func ParseFlags() (*Config, error) {
 
 	// Set derived paths
 	cfg.VADModel = filepath.Join(cfg.ModelDir, "silero_vad.onnx")
-	cfg.WhisperEncoder = filepath.Join(cfg.ModelDir, "whisper", "whisper-small-encoder.int8.onnx")
-	cfg.WhisperDecoder = filepath.Join(cfg.ModelDir, "whisper", "whisper-small-decoder.int8.onnx")
-	cfg.WhisperTokens = filepath.Join(cfg.ModelDir, "whisper", "whisper-small-tokens.txt")
+	cfg.WhisperEncoder = filepath.Join(cfg.ModelDir, "whisper", fmt.Sprintf("whisper-%s-encoder.int8.onnx", cfg.WhisperModel))
+	cfg.WhisperDecoder = filepath.Join(cfg.ModelDir, "whisper", fmt.Sprintf("whisper-%s-decoder.int8.onnx", cfg.WhisperModel))
+	cfg.WhisperTokens = filepath.Join(cfg.ModelDir, "whisper", fmt.Sprintf("whisper-%s-tokens.txt", cfg.WhisperModel))
 
 	// Kokoro TTS model paths (multi-lang v1.0 - supports CoreML on macOS)
 	ttsDir := filepath.Join(cfg.ModelDir, "tts", "kokoro-multi-lang-v1_0")

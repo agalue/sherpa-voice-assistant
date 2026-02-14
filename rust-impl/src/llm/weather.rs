@@ -119,13 +119,10 @@ impl WeatherTool {
     /// # Errors
     /// Returns `WeatherError` if request fails.
     async fn get_current_ip(&self) -> Result<String, WeatherError> {
-        let cli = Client::builder()
-            .timeout(std::time::Duration::from_secs(5))
-            .build()
-            .map_err(|e| {
-                info!("Failed to build HTTP client: {}", e);
-                WeatherError
-            })?;
+        let cli = Client::builder().timeout(std::time::Duration::from_secs(5)).build().map_err(|e| {
+            info!("Failed to build HTTP client: {}", e);
+            WeatherError
+        })?;
         cli.get("https://ifconfig.me/ip")
             .send()
             .await
@@ -152,13 +149,10 @@ impl WeatherTool {
     /// # Errors
     /// Returns `WeatherError` if request fails.
     async fn get_coords_from_ip(&self, ipaddr: &str) -> Result<(f64, f64, String), WeatherError> {
-        let cli = Client::builder()
-            .timeout(std::time::Duration::from_secs(5))
-            .build()
-            .map_err(|e| {
-                info!("Failed to build HTTP client: {}", e);
-                WeatherError
-            })?;
+        let cli = Client::builder().timeout(std::time::Duration::from_secs(5)).build().map_err(|e| {
+            info!("Failed to build HTTP client: {}", e);
+            WeatherError
+        })?;
         let ipgeo = cli
             .get(format!("http://ip-api.com/json/{}", ipaddr))
             .send()
@@ -192,13 +186,10 @@ impl WeatherTool {
         if city.is_empty() {
             return Err(WeatherError);
         }
-        let cli = Client::builder()
-            .timeout(std::time::Duration::from_secs(5))
-            .build()
-            .map_err(|e| {
-                info!("Failed to build HTTP client: {}", e);
-                WeatherError
-            })?;
+        let cli = Client::builder().timeout(std::time::Duration::from_secs(5)).build().map_err(|e| {
+            info!("Failed to build HTTP client: {}", e);
+            WeatherError
+        })?;
         // URL encode city name for special characters
         let encoded_city = urlencoding::encode(city);
         let response = cli
@@ -241,13 +232,10 @@ impl WeatherTool {
     /// # Errors
     /// Returns `WeatherError` if request fails.
     async fn get_weather_data(&self, lat: f64, lon: f64, location: &str) -> Result<String, WeatherError> {
-        let cli = Client::builder()
-            .timeout(std::time::Duration::from_secs(5))
-            .build()
-            .map_err(|e| {
-                info!("Failed to build HTTP client: {}", e);
-                WeatherError
-            })?;
+        let cli = Client::builder().timeout(std::time::Duration::from_secs(5)).build().map_err(|e| {
+            info!("Failed to build HTTP client: {}", e);
+            WeatherError
+        })?;
         let weather = cli
             .get(format!(
                 "https://api.open-meteo.com/v1/forecast?latitude={}&longitude={}&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,rain,showers,snowfall",

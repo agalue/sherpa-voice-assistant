@@ -2,6 +2,7 @@
 /voice-assistant
 /assistant
 /run-voice-assistant.sh
+/expermental/
 
 # sherpa-onnx CUDA build artifacts
 /.sherpa-onnx-build/

@@ -4,20 +4,81 @@ server:
   secret_key: "local-development-key-not-for-production"
   limiter: false  # Disable rate limiting for local use
   image_proxy: false
+  http_protocol_version: "1.1"  # Use HTTP/1.1 for lower memory
 
 search:
   formats:
-    - html
-    - json  # Enable JSON format
+    - json  # Only JSON format for API use
+  max_page: 1  # Only first page of results
+  default_lang: "all"  # Support all languages for multilingual voice assistant
+  safe_search: 0  # Disable safe search filtering overhead
+  autocomplete: ""  # Disable autocomplete to save memory
+  results_on_new_tab: false  # Don't open results in new tabs
 
 ui:
   default_locale: ""  # Auto-detect language from query
+  infinite_scroll: false
+  static_path: ""
+  cache_busting: false
+  query_in_title: false  # Reduce HTML rendering
 
-enabled_plugins:
-  - 'Hash plugin'
-  - 'Self Information'
-  - 'Tracker URL remover'
+# Minimal plugin set for lower memory usage
+enabled_plugins: []
+
+# Use only Bing and Wikipedia for best results with minimal memory
+engines:
+  - name: bing
+    engine: bing
+    shortcut: bi
+    disabled: false
+    timeout: 5.0
+    weight: 1
+    number_of_results: 5  # Limit to 5 results per query
+    # Bing provides excellent results and is API-friendly
+
+  - name: wikipedia
+    engine: wikipedia
+    shortcut: wp
+    disabled: false
+    timeout: 5.0
+    weight: 1
+    number_of_results: 3  # Limit Wikipedia results
+
+  # Explicitly disable all other engines
+  - name: google
+    disabled: true
+  - name: duckduckgo
+    disabled: true
+  - name: brave
+    disabled: true
+  - name: startpage
+    disabled: true
+  - name: qwant
+    disabled: true
+  - name: yahoo
+    disabled: true
+  - name: reddit
+    disabled: true
+  - name: stackoverflow
+    disabled: true
+  - name: github
+    disabled: true
+  - name: arxiv
+    disabled: true
+  - name: youtube
+    disabled: true
 
 outgoing:
-  request_timeout: 10.0
-  max_request_timeout: 15.0
+  request_timeout: 5.0  # Reduced from 10.0
+  max_request_timeout: 8.0  # Reduced from 15.0
+  pool_connections: 10  # Reduced connection pool
+  pool_maxsize: 10  # Reduced max pool size
+  enable_http2: false  # Disable HTTP/2 for lower memory
+
+# Redis cache disabled to save memory
+redis:
+  url: false
+
+# Disable checker for lower resource usage
+checker:
+  off_when_debug: true
