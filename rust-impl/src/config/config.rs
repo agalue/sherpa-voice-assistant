@@ -93,9 +93,13 @@ pub struct AppConfig {
     #[arg(long, short = 'u', env = "OLLAMA_URL", default_value = "http://localhost:11434")]
     pub ollama_url: String,
 
-    /// Ollama model name
-    #[arg(long, short = 'm', env = "OLLAMA_MODEL", default_value = "gemma3:1b")]
+    /// Ollama model name (qwen2.5:1.5b recommended - multilingual + function calling support)
+    #[arg(long, short = 'm', env = "OLLAMA_MODEL", default_value = "qwen2.5:1.5b")]
     pub ollama_model: String,
+
+    /// SearXNG instance URL for web search (optional, uses DuckDuckGo if not provided)
+    #[arg(long, env = "SEARXNG_URL")]
+    pub searxng_url: Option<String>,
 
     /// System prompt for the LLM
     #[arg(
@@ -123,6 +127,10 @@ pub struct AppConfig {
     /// Use "auto" for automatic language detection
     #[arg(long, default_value = "en")]
     pub stt_language: String,
+
+    /// Whisper model size (tiny, base, small, medium, large). Use 'tiny' for memory-constrained devices like Jetson
+    #[arg(long, default_value = "tiny")]
+    pub whisper_model: String,
 
     /// Hardware acceleration provider (auto-detected if not specified)
     #[arg(long, value_enum)]
@@ -266,25 +274,22 @@ impl AppConfig {
     /// Kokoro TTS supports CoreML on macOS and CUDA on Linux.
     #[allow(clippy::unnecessary_lazy_evaluations)]
     pub fn effective_tts_provider(&self) -> Provider {
-        self.tts_provider.or(self.provider).unwrap_or_else(|| {
-            // Kokoro TTS supports CoreML acceleration on macOS
-            detect_provider()
-        })
+        self.tts_provider.or(self.provider).unwrap_or_else(detect_provider)
     }
 
     /// Get the path to the Whisper encoder model (multilingual).
     pub fn whisper_encoder_path(&self) -> PathBuf {
-        self.model_dir.join("whisper").join("whisper-small-encoder.int8.onnx")
+        self.model_dir.join("whisper").join(format!("whisper-{}-encoder.int8.onnx", self.whisper_model))
     }
 
     /// Get the path to the Whisper decoder model (multilingual).
     pub fn whisper_decoder_path(&self) -> PathBuf {
-        self.model_dir.join("whisper").join("whisper-small-decoder.int8.onnx")
+        self.model_dir.join("whisper").join(format!("whisper-{}-decoder.int8.onnx", self.whisper_model))
     }
 
     /// Get the path to the Whisper tokens file (multilingual).
     pub fn whisper_tokens_path(&self) -> PathBuf {
-        self.model_dir.join("whisper").join("whisper-small-tokens.txt")
+        self.model_dir.join("whisper").join(format!("whisper-{}-tokens.txt", self.whisper_model))
     }
 
     /// Get the effective STT language code for Whisper.

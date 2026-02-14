@@ -563,13 +563,22 @@ if [[ "$OS" == "Darwin" ]]; then
         log_warn "Binary has dynamic library dependencies that may need fixing..."
 
         # Find where the libraries were downloaded by sherpa-rs
+        # On macOS, sherpa-rs uses ~/Library/Caches/sherpa-rs for download-binaries feature
         SHERPA_LIB_DIR=""
-        for dir in "${HOME}/.cache/sherpa-rs" "${PROJECT_DIR}/target/${BUILD_MODE}/build"/sherpa-*/out/lib; do
-            if [[ -d "$dir" ]] && ls "$dir"/*.dylib &>/dev/null 2>&1; then
-                SHERPA_LIB_DIR="$dir"
-                break
-            fi
-        done
+        if [[ -d "${HOME}/Library/Caches/sherpa-rs" ]]; then
+            # Find the lib directory containing libonnxruntime dylibs
+            SHERPA_LIB_DIR=$(find "${HOME}/Library/Caches/sherpa-rs" -name "libonnxruntime.*.dylib" -exec dirname {} \; 2>/dev/null | head -1)
+        fi
+
+        # Fallback to checking build directory
+        if [[ -z "$SHERPA_LIB_DIR" ]]; then
+            for dir in "${HOME}/.cache/sherpa-rs" "${PROJECT_DIR}/target/${BUILD_MODE}/build"/sherpa-*/out/lib; do
+                if [[ -d "$dir" ]] && ls "$dir"/*.dylib &>/dev/null 2>&1; then
+                    SHERPA_LIB_DIR="$dir"
+                    break
+                fi
+            done
+        fi
 
         if [[ -n "$SHERPA_LIB_DIR" ]]; then
             log_info "Found sherpa libraries in: $SHERPA_LIB_DIR"
@@ -630,9 +639,52 @@ elif [[ "$USE_CUDA" == "true" && "$OS" == "Linux" ]]; then
     cat > "$RUN_SCRIPT" << 'EOF'
 #!/bin/bash
 # Wrapper script to run voice-assistant with proper CUDA library paths
-# This script sets up LD_LIBRARY_PATH so the binary can find its shared libraries
+# Automatically handles Jetson unified memory pre-loading
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Detect if running on Jetson
+IS_JETSON=false
+if [[ -f /etc/nv_tegra_release ]] || [[ -d /usr/lib/aarch64-linux-gnu/tegra ]]; then
+    IS_JETSON=true
+fi
+
+# Pre-load Ollama model on Jetson to prevent memory fragmentation
+if [[ "$IS_JETSON" == "true" ]]; then
+    # Extract model and URL from command line args
+    OLLAMA_MODEL=""
+    OLLAMA_URL=""
+    for ((i=1; i<=$#; i++)); do
+        if [[ "${!i}" == "-ollama-model" || "${!i}" == "--ollama-model" ]]; then
+            j=$((i+1))
+            OLLAMA_MODEL="${!j}"
+        elif [[ "${!i}" == "-ollama-url" || "${!i}" == "--ollama-url" || "${!i}" == "-u" ]]; then
+            j=$((i+1))
+            OLLAMA_URL="${!j}"
+        fi
+    done
+    
+    # Defaults
+    OLLAMA_MODEL="${OLLAMA_MODEL:-qwen2.5:1.5b}"
+    OLLAMA_URL="${OLLAMA_URL:-http://localhost:11434}"
+    
+    # Check if Ollama is responding
+    if curl -s "${OLLAMA_URL}/api/version" > /dev/null 2>&1; then
+        # Check if model exists (using fixed string match to handle dots/colons in model names)
+        if ollama list 2>/dev/null | awk '{print $1}' | grep -Fxq "$OLLAMA_MODEL"; then
+            echo "⚡ Jetson detected: Pre-loading Ollama model $OLLAMA_MODEL..."
+            # Pre-load with reduced context to reserve GPU memory before voice assistant starts
+            curl -s "${OLLAMA_URL}/api/generate" -d "{
+                \"model\": \"$OLLAMA_MODEL\",
+                \"prompt\": \".\",
+                \"stream\": false,
+                \"options\": {\"num_ctx\": 1024, \"num_predict\": 1}
+            }" > /dev/null 2>&1 && echo "✓ Model pre-loaded"
+        else
+            echo "⚠️  Model $OLLAMA_MODEL not found. Run: ollama pull $OLLAMA_MODEL"
+        fi
+    fi
+fi
 
 # Setup CUDA environment
 if [[ -z "$CUDA_HOME" ]]; then

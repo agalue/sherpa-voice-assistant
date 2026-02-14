@@ -1,0 +1,57 @@
+services:
+  searxng:
+    image: searxng/searxng:2024.2.21
+    container_name: searxng
+    
+    # Memory limits for Jetson Orin Nano
+    mem_limit: 384m
+    mem_reservation: 256m
+    
+    # CPU limits - use only 1 core for minimal resource usage
+    cpus: 1
+    
+    # Restart policy
+    restart: unless-stopped
+    
+    # Network
+    ports:
+      - "127.0.0.1:8080:8080"
+    
+    # Volume for settings
+    volumes:
+      - ./settings.yml:/etc/searxng/settings.yml:ro
+    
+    # Environment variables
+    environment:
+      - SEARXNG_BASE_URL=http://localhost:8080/
+      - SEARXNG_SECRET=local-development-key-not-for-production
+      # Minimal worker configuration for single core
+      - UWSGI_WORKERS=1
+      - UWSGI_THREADS=2
+      # Disable stats and logging overhead
+      - UWSGI_DISABLE_LOGGING=1
+    
+    # Logging limits
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "1"
+    
+    # Security options
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+    
+    # Read-only root filesystem for security
+    read_only: true
+    tmpfs:
+      - /tmp:size=64M
+      - /var/log/uwsgi:size=32M
+
+networks:
+  default:
+    driver: bridge

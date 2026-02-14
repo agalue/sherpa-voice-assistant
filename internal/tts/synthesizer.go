@@ -148,16 +148,64 @@ func (s *Synthesizer) SynthesizeStreaming(text string) ([]*AudioOutput, error) {
 }
 
 // SplitSentences splits text into sentences for streaming synthesis.
+// Intelligently splits on sentence boundaries (. ! ? \n) while avoiding:
+// - Decimal numbers (e.g., "10.5°C")
+// - Some abbreviations and initials (for example certain letter-based forms)
+// - Periods not followed by proper sentence starts
 // Exported for use by the TTS processor.
 func SplitSentences(text string) []string {
 	var sentences []string
 	var current strings.Builder
 
-	for _, c := range text {
+	runes := []rune(text)
+	for i := 0; i < len(runes); i++ {
+		c := runes[i]
 		current.WriteRune(c)
 
 		// Check for sentence boundaries
 		if c == '.' || c == '!' || c == '?' || c == '\n' {
+			// Don't split on periods in decimal numbers
+			if c == '.' {
+				prevIsDigit := i > 0 && isDigit(runes[i-1])
+				nextIsDigit := i+1 < len(runes) && isDigit(runes[i+1])
+
+				if prevIsDigit && nextIsDigit {
+					// This is a decimal point (e.g., "10.5"), don't split
+					continue
+				}
+
+				// Don't split on single-letter abbreviations (e.g., "U.S.", "Dr.")
+				if i > 0 && isLetter(runes[i-1]) {
+					// Check if previous is single capital letter
+					prevChar := runes[i-1]
+					var beforePrev rune
+					if i > 1 {
+						beforePrev = runes[i-2]
+					}
+
+					if isUpper(prevChar) && (i == 1 || beforePrev == ' ' || beforePrev == ',') {
+						// Single capital letter + period (likely abbreviation), don't split
+						continue
+					}
+				}
+
+				// Look ahead: proper sentences have space + uppercase after period
+				if i+1 < len(runes) {
+					next := runes[i+1]
+					if next == ' ' && i+2 < len(runes) {
+						afterSpace := runes[i+2]
+						if !isUpper(afterSpace) && !isDigit(afterSpace) {
+							// Not followed by uppercase letter (not a proper sentence start)
+							continue
+						}
+					} else if next != ' ' && next != '\n' {
+						// No space after period (not a sentence boundary)
+						continue
+					}
+				}
+			}
+
+			// Valid sentence boundary
 			trimmed := strings.TrimSpace(current.String())
 			if trimmed != "" {
 				sentences = append(sentences, trimmed)
@@ -173,6 +221,19 @@ func SplitSentences(text string) []string {
 	}
 
 	return sentences
+}
+
+// Helper functions for rune checks
+func isDigit(r rune) bool {
+	return r >= '0' && r <= '9'
+}
+
+func isLetter(r rune) bool {
+	return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z')
+}
+
+func isUpper(r rune) bool {
+	return r >= 'A' && r <= 'Z'
 }
 
 // SampleRate returns the output sample rate.

@@ -269,7 +269,7 @@ if [[ "$USE_CUDA" == "true" && "$OS" == "Linux" ]]; then
     # IMPORTANT: This version must match the sherpa-onnx-go-linux/macos versions in go.mod
     # The sanity check below will fail the build if they drift apart.
     # See README.md "Upgrading Dependencies" for the upgrade procedure.
-    SHERPA_VERSION="v1.12.23"
+    SHERPA_VERSION="v1.12.24"
     BUILD_MARKER="$SHERPA_INSTALL_DIR/.build-complete-${SHERPA_VERSION}"
 
     # Verify go.mod version matches before building
@@ -423,8 +423,52 @@ EOF
         cat > "$PROJECT_DIR/run-voice-assistant.sh" << 'WRAPPER'
 #!/bin/bash
 # Wrapper script to run voice-assistant with proper CUDA library paths
+# Automatically handles Jetson unified memory pre-loading
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Detect if running on Jetson
+IS_JETSON=false
+if [[ -f /etc/nv_tegra_release ]] || [[ -d /usr/lib/aarch64-linux-gnu/tegra ]]; then
+    IS_JETSON=true
+fi
+
+# Pre-load Ollama model on Jetson to prevent memory fragmentation
+if [[ "$IS_JETSON" == "true" ]]; then
+    # Extract model and URL from command line args
+    OLLAMA_MODEL=""
+    OLLAMA_URL=""
+    for ((i=1; i<=$#; i++)); do
+        if [[ "${!i}" == "-ollama-model" || "${!i}" == "--ollama-model" ]]; then
+            j=$((i+1))
+            OLLAMA_MODEL="${!j}"
+        elif [[ "${!i}" == "-ollama-url" || "${!i}" == "--ollama-url" ]]; then
+            j=$((i+1))
+            OLLAMA_URL="${!j}"
+        fi
+    done
+
+    # Defaults
+    OLLAMA_MODEL="${OLLAMA_MODEL:-qwen2.5:1.5b}"
+    OLLAMA_URL="${OLLAMA_URL:-http://localhost:11434}"
+
+    # Check if Ollama is responding
+    if curl -s "${OLLAMA_URL}/api/version" > /dev/null 2>&1; then
+        # Check if model exists (using fixed string match to handle dots/colons in model names)
+        if ollama list 2>/dev/null | awk '{print $1}' | grep -Fxq "$OLLAMA_MODEL"; then
+            echo "⚡ Jetson detected: Pre-loading Ollama model $OLLAMA_MODEL..."
+            # Pre-load with reduced context to reserve GPU memory before voice assistant starts
+            curl -s "${OLLAMA_URL}/api/generate" -d "{
+                \"model\": \"$OLLAMA_MODEL\",
+                \"prompt\": \".\",
+                \"stream\": false,
+                \"options\": {\"num_ctx\": 1024, \"num_predict\": 1}
+            }" > /dev/null 2>&1 && echo "✓ Model pre-loaded"
+        else
+            echo "⚠️  Model $OLLAMA_MODEL not found. Run: ollama pull $OLLAMA_MODEL"
+        fi
+    fi
+fi
 
 # Find CUDA home
 CUDA_HOME="${CUDA_HOME:-}"
@@ -527,7 +571,7 @@ if [[ -f "voice-assistant" ]]; then
     echo "Before running, ensure you have:"
     echo "  1. Downloaded models: ./scripts/setup.sh"
     echo "  2. Started Ollama: ollama serve"
-    echo "  3. Loaded a model: ollama run gemma3:1b"
+    echo "  3. Loaded a model: ollama run qwen2.5:1.5b"
     echo
     if [[ "$USE_CUDA" == "true" && -n "$SHERPA_ONNX_LIB_DIR" ]]; then
         echo -e "${YELLOW}CUDA build notes:${NC}"

@@ -18,12 +18,13 @@ audioadapter-buffers = "2"  # Buffer adapters for rubato
 
 # LLM interaction
 rig-core = { version = "0.30", default-features = false, features = ["reqwest-rustls"] }
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"] }
+urlencoding = "2"
 
 # CLI and configuration
 clap = { version = "4", features = ["derive", "env"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-toml = "0.9"
 dirs = "6"
 
 # Error handling
@@ -60,9 +61,13 @@ num_cpus = "1"   # CPU core detection for thread configuration
 #   3. Check the bundled c-api.h or dist.json (note: dist.json may be wrong)
 #   4. Compare struct definitions with sherpa-onnx releases
 #
-# macOS: Use static linking for easier deployment
-[target.'cfg(target_os = "macos")'.dependencies]
+# Apple Silicon (arm64): Use static linking with CoreML support
+[target.'cfg(all(target_os = "macos", target_arch = "aarch64"))'.dependencies]
 sherpa-rs = { version = "=0.6.8", default-features = false, features = ["tts", "static"] }
+
+# Intel Mac (x86_64): Use download-binaries (CoreML not available on x86_64)
+[target.'cfg(all(target_os = "macos", target_arch = "x86_64"))'.dependencies]
+sherpa-rs = { version = "=0.6.8", default-features = false, features = ["tts", "download-binaries"] }
 
 # Linux: Enable CUDA support (incompatible with download-binaries and static)
 [target.'cfg(target_os = "linux")'.dependencies]

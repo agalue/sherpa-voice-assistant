@@ -215,18 +215,18 @@ check_ollama() {
     if ! command -v ollama &> /dev/null; then
         echo -e "${YELLOW}⚠ Ollama is not installed${NC}"
         echo -e "${YELLOW}  Install from: https://ollama.ai${NC}"
-        echo -e "${YELLOW}  Then run: ollama pull gemma3:1b${NC}"
+        echo -e "${YELLOW}  Then run: ollama pull qwen2.5:1.5b${NC}"
         return
     fi
     
     echo -e "${GREEN}✓ Ollama is installed${NC}"
     
-    # Check if default model is available
-    if ! ollama list | grep -q "gemma3:1b"; then
-        echo -e "${YELLOW}⚠ Default model (gemma3:1b) not found${NC}"
-        echo -e "${YELLOW}  Run: ollama pull gemma3:1b${NC}"
+    # Check if default model is available (using fixed string match to handle dots/colons in model names)
+    if ! ollama list | awk '{print $1}' | grep -Fxq "qwen2.5:1.5b"; then
+        echo -e "${YELLOW}⚠ Default model (qwen2.5:1.5b) not found${NC}"
+        echo -e "${YELLOW}  Run: ollama pull qwen2.5:1.5b${NC}"
     else
-        echo -e "${GREEN}✓ Default model (gemma3:1b) is available${NC}"
+        echo -e "${GREEN}✓ Default model (qwen2.5:1.5b) is available${NC}"
     fi
 }
 
@@ -241,32 +241,44 @@ else
     echo -e "${GREEN}✓ Silero VAD model installed${NC}"
 fi
 
-# 2. Download Whisper model (multilingual small - supports 99 languages)
+# 2. Download Whisper models (multilingual - supports 99 languages)
+# Sizes: tiny (111MB, ~390MB RAM), base (198MB, ~740MB RAM), small (610MB, ~2.4GB RAM)
+# Default: Downloads both tiny (default runtime model) and small (for better accuracy when needed)
 echo
-echo -e "${GREEN}[2/4] Downloading Whisper STT model (small multilingual)...${NC}"
-WHISPER_URL="${SHERPA_BASE}/asr-models/sherpa-onnx-whisper-small.tar.bz2"
+echo -e "${GREEN}[2/4] Downloading Whisper STT models...${NC}"
 WHISPER_DIR="${MODELS_DIR}/whisper"
 
-if [[ "$FORCE_DOWNLOAD" = false && -f "${WHISPER_DIR}/whisper-small-encoder.int8.onnx" ]]; then
-    echo -e "${YELLOW}Whisper model already exists, skipping...${NC}"
-else
-    echo -e "${YELLOW}This may take a few minutes...${NC}"
+# Function to download a specific Whisper model
+download_whisper_model() {
+    local model_size="$1"
+    local whisper_url="${SHERPA_BASE}/asr-models/sherpa-onnx-whisper-${model_size}.tar.bz2"
+
+    if [[ "$FORCE_DOWNLOAD" = false && -f "${WHISPER_DIR}/whisper-${model_size}-encoder.int8.onnx" ]]; then
+        echo -e "${YELLOW}Whisper ${model_size} already exists, skipping...${NC}"
+        return 0
+    fi
     
+    echo -e "${YELLOW}Downloading Whisper ${model_size}...${NC}"
     (
         tmp_dir=$(mktemp -d)
         trap 'rm -rf "$tmp_dir"' EXIT
         
-        curl -L "$WHISPER_URL" -o "${tmp_dir}/whisper.tar.bz2"
+        curl -L "$whisper_url" -o "${tmp_dir}/whisper.tar.bz2"
         tar -xjf "${tmp_dir}/whisper.tar.bz2" -C "${tmp_dir}"
 
         # Move only int8 quantized models (smaller, faster)
-        cp "${tmp_dir}/sherpa-onnx-whisper-small/small-encoder.int8.onnx" "${WHISPER_DIR}/whisper-small-encoder.int8.onnx"
-        cp "${tmp_dir}/sherpa-onnx-whisper-small/small-decoder.int8.onnx" "${WHISPER_DIR}/whisper-small-decoder.int8.onnx"
-        cp "${tmp_dir}/sherpa-onnx-whisper-small/small-tokens.txt" "${WHISPER_DIR}/whisper-small-tokens.txt"
+        cp "${tmp_dir}/sherpa-onnx-whisper-${model_size}/${model_size}-encoder.int8.onnx" "${WHISPER_DIR}/whisper-${model_size}-encoder.int8.onnx"
+        cp "${tmp_dir}/sherpa-onnx-whisper-${model_size}/${model_size}-decoder.int8.onnx" "${WHISPER_DIR}/whisper-${model_size}-decoder.int8.onnx"
+        cp "${tmp_dir}/sherpa-onnx-whisper-${model_size}/${model_size}-tokens.txt" "${WHISPER_DIR}/whisper-${model_size}-tokens.txt"
     )
+    echo -e "${GREEN}✓ Whisper ${model_size} installed${NC}"
+}
 
-    echo -e "${GREEN}✓ Whisper model installed${NC}"
-fi
+# Download models based on WHISPER_MODELS environment variable or default to tiny and small
+WHISPER_MODELS="${WHISPER_MODELS:-tiny small}"
+for model in ${WHISPER_MODELS}; do
+    download_whisper_model "$model"
+done
 
 # 3. Download Kokoro TTS model (multi-lang v1.0 - supports CoreML on macOS)
 echo
@@ -335,9 +347,22 @@ check_file() {
 }
 
 check_file "${MODELS_DIR}/silero_vad.onnx"
-check_file "${MODELS_DIR}/whisper/whisper-small-encoder.int8.onnx"
-check_file "${MODELS_DIR}/whisper/whisper-small-decoder.int8.onnx"
-check_file "${MODELS_DIR}/whisper/whisper-small-tokens.txt"
+# Check for at least one Whisper model
+if ! ls "${MODELS_DIR}/whisper/whisper-"*"-encoder.int8.onnx" >/dev/null 2>&1; then
+    echo -e "${RED}✗ No Whisper models found${NC}"
+    echo -e "${RED}  Run: WHISPER_MODELS='tiny small' ./scripts/setup.sh${NC}"
+    ERRORS=$((ERRORS + 1))
+else
+    echo -e "${GREEN}✓ Whisper models found:${NC}"
+    for f in "${MODELS_DIR}/whisper/whisper-"*"-encoder.int8.onnx"; do
+        model_name=$(basename "$f" | sed 's/whisper-\(.*\)-encoder.*/\1/')
+        echo -e "${GREEN}  - ${model_name}${NC}"
+        decoder_path="${MODELS_DIR}/whisper/whisper-${model_name}-decoder.int8.onnx"
+        tokens_path="${MODELS_DIR}/whisper/whisper-${model_name}-tokens.txt"
+        check_file "${decoder_path}"
+        check_file "${tokens_path}"
+    done
+fi
 check_file "${KOKORO_DIR}/model.onnx"
 check_file "${KOKORO_DIR}/voices.bin"
 check_file "${KOKORO_DIR}/tokens.txt"
@@ -373,7 +398,7 @@ if [[ ${#MISSING_FILES[@]} -eq 0 ]]; then
         echo
     fi
     echo "Make sure Ollama is running with a model loaded:"
-    echo "  ollama run gemma3:1b"
+    echo "  ollama run qwen2.5:1.5b"
     echo
 else
     echo -e "${RED}═══════════════════════════════════════════════════════════${NC}"

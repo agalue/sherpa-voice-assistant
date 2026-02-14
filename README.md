@@ -11,7 +11,8 @@ For the LLM processing, I'm relying on [Ollama](https://ollama.com/), as it work
 - **Voice Activity Detection (VAD)**: Silero-VAD for accurate speech boundary detection
 - **Speech-to-Text (STT)**: Whisper multilingual model for high-quality transcription (99 languages)
 - **Text-to-Speech (TTS)**: Kokoro for natural-sounding voice synthesis with emotional expression
-- **LLM Integration**: Ollama API for conversational AI
+- **LLM Integration**: Ollama API for conversational AI with agentic tool calling
+- **Agentic Tools**: Weather information and web search capabilities
 - **Low Latency**: Optimized for real-time conversation
 - **Interrupt Support**: Optional stop playback when user starts speaking
 - **Wake Word**: Optional wake word activation
@@ -46,6 +47,8 @@ This solution has been designed and tested on the following platforms:
 | **Apple Mac Mini M4** | Apple M4 (10-core) | 16GB unified | AirPods Pro | Full CoreML acceleration (ANE) |
 | **NVIDIA Jetson Orin Nano Super** | ARM Cortex-A78AE | 8GB unified | AirPods Pro | Full CUDA acceleration |
 
+> **⚡ Running on Jetson Orin Nano?** See [JETSON_OPTIMIZATION.md](JETSON_OPTIMIZATION.md) for memory optimization strategies to run larger models on 8GB devices.
+
 ### Minimum Hardware Requirements
 
 - **Memory**: 8GB minimum (unified memory recommended)
@@ -62,6 +65,8 @@ flowchart LR
         B --> C[🧠 LLM<br/>Ollama]
         C --> D[📢 TTS<br/>Kokoro]
         D --> E[🔊 Playback<br/>malgo]
+        C -.->|Tool Calls| F[🔧 Tools<br/>Weather & Search]
+        F -.->|Results| C
     end
     
     E -.->|Interrupt Flag<br/>speech detected| A
@@ -99,7 +104,7 @@ nvcc --version  # Should show CUDA version
 
 ### 1. Download Models
 
-Run the setup script to download required models (~500MB total):
+Run the setup script to download required models (default: ~900MB total):
 
 ```bash
 chmod +x scripts/setup.sh
@@ -108,8 +113,31 @@ chmod +x scripts/setup.sh
 
 This downloads:
 - **Silero-VAD**: Voice activity detection model
-- **Whisper small**: Multilingual speech recognition model (int8 quantized, 99 languages)
+- **Whisper tiny + small**: Multilingual speech recognition models (int8 quantized, 99 languages)
 - **Kokoro v1.0**: Multilingual text-to-speech model with natural voices
+
+**Note**: By default, both `tiny` (default runtime model) and `small` (for better accuracy) are downloaded (~721MB total).
+
+**Choosing Whisper Model Size:**
+
+| Model | Memory | Download | WER | Speed | Best For |
+|-------|--------|----------|-----|-------|----------|
+| `tiny` | ~390MB | 111MB | ~5.0% | 32x realtime | **Jetson, edge devices** |
+| `base` | ~740MB | 198MB | ~3.4% | 16x realtime | Balanced accuracy/speed |
+| `small` | ~2.4GB | 610MB | ~2.2% | 6x realtime | **Desktop, best accuracy** |
+
+Download specific models:
+
+```bash
+# Download tiny model only (recommended for Jetson)
+WHISPER_MODELS='tiny' ./scripts/setup.sh
+
+# Download multiple models
+WHISPER_MODELS='tiny small' ./scripts/setup.sh
+
+# Download all models
+WHISPER_MODELS='tiny base small' ./scripts/setup.sh
+```
 
 **Setup Script Options:**
 ```bash
@@ -120,7 +148,7 @@ This downloads:
 ./scripts/setup.sh --force
 
 # Combine options
-./scripts/setup.sh --assets-dir /custom/path --force
+WHISPER_MODELS='tiny' ./scripts/setup.sh --assets-dir /custom/path --force
 ```
 
 The setup script is **idempotent** - it won't re-download existing files unless `--force` is used.
@@ -182,11 +210,17 @@ The build script will:
 
 ### 3. Start Ollama
 
-Make sure Ollama is running with a model:
+Make sure Ollama is running with a model that supports tool calling:
 
 ```bash
-ollama run gemma3:1b
+# Pull the recommended model (supports tool calling + multilingual)
+ollama pull qwen2.5:1.5b
+
+# Start a chat to keep the model loaded
+ollama run qwen2.5:1.5b
 ```
+
+**Note**: The default model has changed from `gemma3:1b` to `qwen2.5:1.5b` to support agentic tool calling for weather and web search while keeping memory usage low.
 
 ### 4. Run the Assistant
 
@@ -200,7 +234,184 @@ ollama run gemma3:1b
 ./run-voice-assistant.sh
 ```
 
-The wrapper script sets up `LD_LIBRARY_PATH` for CUDA libraries automatically.
+The wrapper script automatically:
+- Sets up `LD_LIBRARY_PATH` for CUDA libraries
+- Detects Jetson hardware and pre-loads Ollama model to prevent memory fragmentation
+- Extracts model from command line args for proper pre-loading
+
+**Jetson Orin Nano Super users**: See [JETSON_OPTIMIZATION.md](JETSON_OPTIMIZATION.md) for memory optimization details.
+
+### Selecting Whisper Model Size
+
+**Use the `-whisper-model` flag to choose STT model size:**
+
+```bash
+# Use tiny model (default, recommended for most devices)
+./voice-assistant -whisper-model tiny
+
+# Use base model (better accuracy, more memory)
+./voice-assistant -whisper-model base
+
+# Use small model (best accuracy, requires more memory)
+./voice-assistant -whisper-model small
+```
+
+**Model Comparison:**
+
+| Model | Memory | Accuracy (WER) | Speed | Use Case |
+|-------|--------|----------------|-------|----------|
+| `tiny` | ~390MB | ~5.0% | 32x RT | **Jetson**, Raspberry Pi, low-memory devices |
+| `base` | ~740MB | ~3.4% | 16x RT | Balanced for most systems |
+| `small` | ~2.4GB | ~2.2% | 6x RT | **Desktop** systems, best quality |
+
+**For Jetson Orin Nano (8GB unified memory)**, tiny is critical to avoid OOM errors. See [JETSON_OPTIMIZATION.md](JETSON_OPTIMIZATION.md) for details.
+
+## Agentic Capabilities
+
+The voice assistant includes **agentic tool calling** powered by Ollama's function calling support. The LLM can proactively use tools to answer questions about current information it doesn't know.
+
+### Available Tools
+
+**🌤️ Weather Tool**
+- Get current weather for any location worldwide
+- Supports city-based queries: "What's the weather in Tokyo?"
+- Automatic IP-based geolocation: "What's the weather here?"
+- Uses Open-Meteo API (no API key required)
+
+**🔍 Web Search Tool**
+- Search the web for current information, news, facts, and events
+- Two backends:
+  - **SearXNG** (recommended): Privacy-respecting metasearch engine
+  - **DuckDuckGo** (fallback): Automatic fallback when SearXNG unavailable
+- Returns top 3 results formatted for voice output
+
+### Required LLM Model
+
+Tool calling requires models that support function calling. The default model has been changed to **qwen2.5:1.5b** which supports:
+- ✅ Multi-lingual conversations (15+ languages)
+- ✅ Tool/function calling
+- ✅ Fast and memory-efficient (~1GB)
+
+> **⚠️ Tool Calling Accuracy Warning**  
+> Tool calling accuracy depends heavily on model size. While smaller models (1.5b, 3b) support function calling, **they have reduced accuracy** in determining when and how to use tools. The 7B models provide significantly better tool usage decisions. For memory-constrained devices like Jetson Orin Nano, this is a known trade-off between memory usage and tool calling reliability.
+
+```bash
+# Pull the default model (one time)
+ollama pull qwen2.5:1.5b
+
+# Or use larger models for better quality
+ollama pull qwen2.5:3b   # ~2GB, better quality
+ollama pull qwen2.5:7b   # ~4.9GB, best quality, excellent tool calling
+```
+
+**Other compatible models:**
+- `qwen2.5:1.5b` - Smaller/faster (~1GB)
+- `qwen2.5:7b` - Better quality (~4.7GB)
+- `mistral:7b` - Alternative with tool support
+
+### Usage Examples
+
+**Weather queries:**
+```
+User: "What's the weather in Paris?"
+Assistant: [Uses weather tool] "The weather for Paris, Île-de-France, FR: 
+           Temperature is 12°C, feels like 10°C. Humidity is 75 percent."
+
+User: "What's the weather here?" 
+Assistant: [Uses weather tool with IP geolocation] "The weather for Chapel Hill..."
+```
+
+**Web search queries:**
+```
+User: "Who won the Super Bowl this year?"
+Assistant: [Uses search tool] "The Kansas City Chiefs defeated..."
+
+User: "What's the latest news about AI?"
+Assistant: [Uses search tool] "Recent developments include..."
+```
+
+**General conversation:**
+```
+User: "Tell me a joke"
+Assistant: [No tools needed] "Why did the scarecrow win an award?..."
+```
+
+### Optional: SearXNG Setup
+
+For privacy-focused web search, you can run your own SearXNG instance locally:
+
+**1. Configuration files**
+
+The repository includes pre-configured files in `searxng/`:
+- `settings.yml` - Optimized for minimal memory usage with Bing search
+- `docker-compose.yml` - Resource limits for edge devices (Jetson, etc.)
+
+**2. Start SearXNG with Docker Compose:**
+```bash
+cd searxng
+
+# If starting for the first time or after a stop:
+docker compose up -d
+
+# If container already exists (to restart):
+docker compose restart
+
+# Check status:
+docker compose ps
+
+cd ..
+```
+
+**3. Verify SearXNG is working:**
+```bash
+curl "http://localhost:8080/search?q=test&format=json"
+```
+
+**4. Run voice assistant with SearXNG:**
+```bash
+# Go version
+./voice-assistant -searxng-url http://localhost:8080
+
+# Rust version
+./target/release/voice-assistant --searxng-url http://localhost:8080
+```
+
+**5. Managing SearXNG:**
+```bash
+cd searxng
+
+# Stop (keeps container, quick restart):
+docker compose stop
+
+# Start stopped container:
+docker compose start
+
+# Restart running container:
+docker compose restart
+
+# Stop and remove container:
+docker compose down
+
+# View logs:
+docker compose logs -f
+```
+
+**Notes:**
+- SearXNG is **optional** - the assistant falls back to DuckDuckGo if not configured
+- Configuration optimized for speed and minimal resource usage (~384MB RAM, 1 CPU core)
+- Supports multilingual queries (matches Whisper's 99-language support)
+- Currently configured with Bing search engine for best API reliability
+- For Jetson Orin Nano optimization, see [JETSON_OPTIMIZATION.md](JETSON_OPTIMIZATION.md)
+
+### How Tool Calling Works
+
+1. **User asks a question** requiring external information
+2. **LLM decides** which tool(s) to call (or none)
+3. **Tools execute** and return results
+4. **LLM synthesizes** a natural response from tool results
+5. **TTS speaks** the final answer
+
+The system uses an **agentic loop**: LLM → Tool Calls → Tool Results → LLM → Final Answer. This happens automatically with no user intervention.
 
 ## Multi-Language Support
 
@@ -220,7 +431,7 @@ Both Whisper (STT) and Kokoro (TTS) support multiple languages. The assistant ca
    - `bf_*/bm_*` → British English
    - `zf_*/zm_*` → Chinese (Mandarin)
 
-3. **LLM**: Use a multilingual model like `qwen2.5:3b` for proper language matching
+3. **LLM**: Use a multilingual model like `qwen2.5:1.5b` or larger for proper language matching
 
 ### Complete Spanish Example
 
@@ -228,11 +439,11 @@ To use the assistant entirely in Spanish:
 
 ```bash
 # 1. Pull a multilingual LLM model (one time)
-ollama pull qwen2.5:3b
+ollama pull qwen2.5:1.5b
 
 # 2. Run with Spanish speech recognition + Spanish TTS voice
 ./voice-assistant \
-  -ollama-model qwen2.5:3b \
+  -ollama-model qwen2.5:1.5b \
   -stt-language es \
   -tts-voice ef_dora \
   -tts-speaker-id 28
@@ -263,12 +474,12 @@ For all 53 available voices: `./voice-assistant --list-voices`
 
 ### Multilingual LLM Models
 
-The default `gemma3:1b` model has limited multilingual support. Use these instead:
+The default `qwen2.5:1.5b` model provides excellent multilingual support. For even better quality:
 
 | Model | Size | Languages | Best For |
 |-------|------|-----------|----------|
-| **qwen2.5:3b** ⭐ | ~2GB | Excellent for 15+ languages | Recommended |
-| **qwen2.5:1.5b** | ~1GB | Good for 15+ languages | Faster, smaller |
+| **qwen2.5:1.5b** ⭐ | ~1GB | Good for 15+ languages | Default, fast |
+| **qwen2.5:3b** | ~2GB | Excellent for 15+ languages | Better quality |
 | **aya-expanse:8b** | ~4.9GB | Purpose-built for 23+ languages | Best quality |
 | **gemma2:2b** | ~1.6GB | Better than gemma3:1b | Alternative |
 
@@ -806,8 +1017,8 @@ For Linux CUDA builds, three files must stay in sync:
 
 | File | What to Update | Current Value |
 |------|----------------|---------------|
-| `go.mod` | `sherpa-onnx-go-linux` and `sherpa-onnx-go-macos` versions | `v1.12.23` |
-| `scripts/build.sh` | `SHERPA_VERSION` variable | `v1.12.23` |
+| `go.mod` | `sherpa-onnx-go-linux` and `sherpa-onnx-go-macos` versions | `v1.12.24` |
+| `scripts/build.sh` | `SHERPA_VERSION` variable | `v1.12.24` |
 
 The build script includes a **sanity check** that fails with clear instructions if versions mismatch.
 
@@ -894,7 +1105,7 @@ The wrapper script automatically sets `LD_LIBRARY_PATH` to find libraries in `~/
 
 ### "Cannot reach Ollama"
 - Start Ollama: `ollama serve`
-- Load a model: `ollama run gemma3:1b`
+- Load a model: `ollama run qwen2.5:1.5b`
 - Check the host URL matches: `-ollama-host http://localhost:11434`
 
 ### No audio capture

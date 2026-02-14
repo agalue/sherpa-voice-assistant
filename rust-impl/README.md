@@ -6,7 +6,8 @@ A real-time voice assistant that runs entirely locally implemented in Rust based
 
 - **Speech-to-Text**: Whisper-based multilingual speech recognition via sherpa-onnx (99 languages)
 - **Voice Activity Detection**: Silero VAD for detecting when you're speaking
-- **Local LLM**: Ollama integration via RIG for conversational AI
+- **Local LLM**: Ollama integration via RIG for conversational AI with agentic tool calling
+- **Agentic Tools**: Weather information and web search capabilities
 - **Text-to-Speech**: Kokoro multilingual voices for natural, expressive speech synthesis
 - **Cross-Platform**: Runs on macOS and Linux with hardware acceleration support
 - **Low Latency**: Streaming TTS and interrupt support for responsive interaction
@@ -25,6 +26,8 @@ flowchart LR
       VAD --> LLM[LLM<br/>Ollama]
       LLM --> TTS[TTS<br/>Kokoro]
       TTS --> Speaker[🔊 Speaker]
+      LLM -.->|Tool Calls| Tools[🔧 Tools<br/>Weather & Search]
+      Tools -.->|Results| LLM
       TTS -.->|Interrupt on Speech| Capture
    end
 ```
@@ -74,9 +77,11 @@ The setup script is **idempotent** - it won't re-download existing files unless 
 # Install Ollama (if not already installed)
 curl -fsSL https://ollama.ai/install.sh | sh
 
-# Pull the default model
-ollama pull gemma3:1b
+# Pull the default model (supports tool calling + multilingual)
+ollama pull qwen2.5:1.5b
 ```
+
+**Note**: The default model has changed from `gemma3:1b` to `qwen2.5:1.5b` to support agentic tool calling for weather and web search while keeping memory usage low.
 
 ### 3. Build and Run
 
@@ -98,6 +103,61 @@ cargo build --release
 ./run-voice-assistant.sh
 ```
 
+## Agentic Capabilities
+
+The Rust implementation includes **agentic tool calling** using the RIG framework with Ollama. The LLM can proactively use tools to answer questions about information it doesn't have.
+
+### Available Tools
+
+**🌤️ Weather Tool** - Get current weather for any location (Open-Meteo API)  
+**🔍 Web Search Tool** - Search for current information (SearXNG or DuckDuckGo)
+
+For detailed information about:
+- How tool calling works
+- Usage examples (weather, search, general conversation)
+- Required LLM models (qwen2.5:1.5b default, qwen2.5:3b for better quality)
+- Optional SearXNG setup
+
+See the [main README Agentic Capabilities section](../README.md#agentic-capabilities).
+
+**Rust-specific usage:**
+```bash
+# Run with SearXNG for privacy-focused web search
+./target/release/voice-assistant --searxng-url http://localhost:8080
+
+# Or with CUDA wrapper
+./run-voice-assistant.sh --searxng-url http://localhost:8080
+
+# Use DuckDuckGo fallback (default, no flag needed)
+./target/release/voice-assistant
+```
+
+**Start SearXNG locally (optional):**
+```bash
+# From repository root (searxng/ directory contains docker-compose.yml)
+cd ../searxng
+
+# If starting for the first time or after 'down':
+docker compose up -d
+
+# If container already exists (to restart):
+docker compose restart
+
+# Check status:
+docker compose ps
+
+cd ../rust-impl
+
+# Management commands:
+# docker compose stop      # Stop (keeps container)
+# docker compose start     # Start stopped container
+# docker compose restart   # Restart running container
+# docker compose down      # Stop and remove container
+# docker compose logs -f   # View logs
+```
+
+**Note:** The `searxng/settings.yml` and `searxng/docker-compose.yml` files are included in the repository with optimized settings for minimal resource usage (~384MB RAM, 1 CPU core, Bing search).
+
 ## Configuration
 
 ### Multi-Language Support
@@ -113,14 +173,14 @@ See the [main README Multi-Language Support section](../README.md#multi-language
 ```bash
 # Spanish example - macOS or Linux CPU
 ./target/release/voice-assistant \
-  --ollama-model qwen2.5:3b \
+  --ollama-model qwen2.5:1.5b \
   --stt-language es \
   --tts-voice ef_dora \
   --tts-speaker-id 28
 
 # Spanish example - Linux with CUDA
 ./run-voice-assistant.sh \
-  --ollama-model qwen2.5:3b \
+  --ollama-model qwen2.5:1.5b \
   --stt-language es \
   --tts-voice ef_dora \
   --tts-speaker-id 28
@@ -131,7 +191,7 @@ See the [main README Multi-Language Support section](../README.md#multi-language
 ```bash
 export MODEL_DIR=/path/to/models
 export OLLAMA_URL=http://localhost:11434
-export OLLAMA_MODEL=gemma3:1b
+export OLLAMA_MODEL=qwen2.5:1.5b
 ```
 
 ### Example Usage
@@ -164,7 +224,7 @@ export OLLAMA_MODEL=gemma3:1b
 
 # Live translation (Spanish to English) with lower temperature for consistency
 ./target/release/voice-assistant \
-  --ollama-model qwen2.5:3b \
+  --ollama-model qwen2.5:1.5b \
   --stt-language es \
   --tts-voice af_bella \
   --tts-speaker-id 2 \

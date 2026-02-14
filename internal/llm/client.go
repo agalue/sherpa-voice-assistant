@@ -12,14 +12,16 @@ import (
 	"github.com/ollama/ollama/api"
 )
 
-// Client is an Ollama API client for LLM interactions.
+// Client is an Ollama API client for LLM interactions with agentic tool support.
 type Client struct {
 	client      *api.Client   // Official Ollama Go client
-	model       string        // LLM model name (e.g., "gemma3:1b")
+	model       string        // LLM model name (e.g., "qwen2.5:3b")
 	history     []api.Message // Conversation history (system prompt at index 0)
 	verbose     bool          // Enable verbose logging
 	maxHistory  int           // Maximum conversation history length
 	temperature float32       // LLM temperature
+	tools       []api.Tool    // Available tools for the agent
+	registry    ToolRegistry  // Tool execution registry
 }
 
 // Config holds LLM client configuration.
@@ -30,9 +32,10 @@ type Config struct {
 	Verbose      bool
 	MaxHistory   int
 	Temperature  float32 // LLM temperature for controlling randomness
+	SearxngURL   string  // Optional SearXNG URL for web search
 }
 
-// NewClient creates a new Ollama client with optimized connection pooling.
+// NewClient creates a new Ollama client with optimized connection pooling and agentic tool support.
 // The HTTP client is configured for low-latency repeated requests to local LLM.
 func NewClient(cfg *Config) (*Client, error) {
 	maxHistory := cfg.MaxHistory
@@ -60,12 +63,22 @@ func NewClient(cfg *Config) (*Client, error) {
 	}
 	client := api.NewClient(parsedURL, httpClient)
 
-	// Initialize history with system prompt at index 0
+	// Build system prompt with tool usage instructions
+	systemPrompt := cfg.SystemPrompt + " CRITICAL: You have two tools available: get_weather and search_web. " +
+		"When asked about current events, news, facts, sports results, or anything you don't know: " +
+		"IMMEDIATELY use search_web tool - DO NOT say you lack information or capabilities. " +
+		"For weather queries: use get_weather tool. Always use tools proactively."
+
+	// Initialize history with enhanced system prompt at index 0
 	history := make([]api.Message, 0, 1)
 	history = append(history, api.Message{
 		Role:    "system",
-		Content: cfg.SystemPrompt,
+		Content: systemPrompt,
 	})
+
+	// Create tool registry and definitions
+	registry := CreateToolRegistry(cfg.SearxngURL)
+	tools := GetToolDefinitions()
 
 	return &Client{
 		client:      client,
@@ -74,10 +87,13 @@ func NewClient(cfg *Config) (*Client, error) {
 		verbose:     cfg.Verbose,
 		maxHistory:  maxHistory,
 		temperature: cfg.Temperature,
+		tools:       tools,
+		registry:    registry,
 	}, nil
 }
 
-// Chat sends a message and returns the response.
+// Chat sends a message and returns the response using agentic loop with tool calling.
+// This method implements the agentic loop: LLM → Tool Calls → Tool Results → LLM → Final Answer
 func (c *Client) Chat(ctx context.Context, userMessage string) (string, error) {
 	// Append user message to history (system prompt already at index 0)
 	c.history = append(c.history, api.Message{
@@ -88,36 +104,90 @@ func (c *Client) Chat(ctx context.Context, userMessage string) (string, error) {
 	// Non-streaming mode
 	stream := false
 
-	var response api.ChatResponse
-	err := c.client.Chat(ctx, &api.ChatRequest{
-		Model:    c.model,
-		Messages: c.history, // Pass history directly (includes system prompt)
-		Stream:   &stream,
-		Options: map[string]any{
-			"temperature": c.temperature,
-			"num_predict": 150,  // Limit response length for voice output
-			"num_ctx":     1024, // Reduced context window to save GPU memory
-		},
-	}, func(resp api.ChatResponse) error {
-		response = resp
-		return nil
-	})
-	if err != nil {
-		return "", fmt.Errorf("chat request failed: %w", err)
+	// Agentic loop: keep calling LLM until no more tools are needed
+	maxIterations := 5 // Prevent infinite loops
+	for iteration := 0; iteration < maxIterations; iteration++ {
+		var response api.ChatResponse
+		err := c.client.Chat(ctx, &api.ChatRequest{
+			Model:    c.model,
+			Messages: c.history, // Pass history directly (includes system prompt)
+			Tools:    c.tools,   // Provide available tools
+			Stream:   &stream,
+			Options: map[string]any{
+				"temperature": c.temperature,
+				"num_predict": 150,  // Limit response length for voice output
+				"num_ctx":     1024, // Reduced context window to save GPU memory
+			},
+		}, func(resp api.ChatResponse) error {
+			response = resp
+			return nil
+		})
+		if err != nil {
+			return "", fmt.Errorf("chat request failed: %w", err)
+		}
+
+		// Check if LLM wants to use tools
+		if len(response.Message.ToolCalls) == 0 {
+			// No tools needed, we have the final answer
+			finalResponse := strings.TrimSpace(response.Message.Content)
+
+			// Append assistant response to history
+			c.history = append(c.history, api.Message{
+				Role:    "assistant",
+				Content: finalResponse,
+			})
+
+			// Trim history if too long
+			c.trimHistory()
+
+			return finalResponse, nil
+		}
+
+		// Execute tools and collect results
+		// First, append the assistant's message with tool calls to history
+		c.history = append(c.history, response.Message)
+
+		// Execute each tool call
+		for _, toolCall := range response.Message.ToolCalls {
+			toolFunc, exists := c.registry[toolCall.Function.Name]
+			if !exists {
+				// Unknown tool, add error message
+				c.history = append(c.history, api.Message{
+					Role:    "tool",
+					Content: fmt.Sprintf("Error: Unknown tool '%s'", toolCall.Function.Name),
+				})
+				continue
+			}
+
+			// Execute the tool (convert Arguments to JSON string)
+			argJSON := toolCall.Function.Arguments.String()
+			result, err := toolFunc(ctx, argJSON)
+			if err != nil {
+				// Tool execution failed, add error message
+				result = fmt.Sprintf("Error executing tool: %v", err)
+			}
+
+			// Add tool result to history
+			c.history = append(c.history, api.Message{
+				Role:    "tool",
+				Content: result,
+			})
+		}
+
+		// Trim history after each iteration to prevent unbounded growth,
+		// including tool messages added in this iteration.
+		c.trimHistory()
+		// Loop continues: LLM will see tool results and generate final response
 	}
 
-	finalResponse := strings.TrimSpace(response.Message.Content)
-
-	// Append assistant response to history
+	// If we hit max iterations, append a final assistant message and return an error
+	finalMsg := "I apologize, but I couldn't complete the task within the allowed time."
 	c.history = append(c.history, api.Message{
 		Role:    "assistant",
-		Content: finalResponse,
+		Content: finalMsg,
 	})
-
-	// Trim history if too long
 	c.trimHistory()
-
-	return finalResponse, nil
+	return finalMsg, fmt.Errorf("max agentic iterations (%d) exceeded", maxIterations)
 }
 
 // ClearHistory clears the conversation history (preserves system prompt).

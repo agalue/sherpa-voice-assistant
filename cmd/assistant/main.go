@@ -36,12 +36,8 @@ func main() {
 	log.Printf("🔊 TTS voice: %s (speaker %d)", cfg.TTSVoice, cfg.TTSSpeakerID)
 
 	// Create context for graceful shutdown
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	// Setup signal handling
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
 	// Create LLM client and verify connection
 	llmClient, err := llm.NewClient(&llm.Config{
@@ -51,6 +47,7 @@ func main() {
 		Verbose:      cfg.Verbose,
 		MaxHistory:   cfg.MaxHistory,
 		Temperature:  cfg.Temperature,
+		SearxngURL:   cfg.SearxngURL,
 	})
 	if err != nil {
 		log.Fatalf("Failed to create LLM client: %v", err)
@@ -165,14 +162,11 @@ func main() {
 	}
 
 	// Wait for shutdown signal
-	<-sigChan
-	log.Println("\n🛑 Shutting down...")
+	<-ctx.Done()
+	log.Println("🛑 Shutting down...")
 
 	// Stop capture first
 	capturer.Stop()
-
-	// Cancel context to stop goroutines
-	cancel()
 
 	// Close channels
 	close(transcriptions)
