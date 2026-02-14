@@ -128,9 +128,9 @@ func ParseDuckDuckGoHTML(html string) []SearxngResult {
 		log.Println("DuckDuckGo may be blocking requests (captcha/blocked detected)")
 	}
 
-	// Simple parsing - look for result divs (take top 2)
+	// Simple parsing - look for result divs (take top 3)
 	sections := strings.Split(html, `class="result"`)
-	for i := 1; i < len(sections) && len(results) < 2; i++ {
+	for i := 1; i < len(sections) && len(results) < 3; i++ {
 		section := sections[i]
 
 		// Extract title (between result__a tags)
@@ -195,10 +195,10 @@ func htmlUnescape(s string) string {
 }
 
 // FormatResults formats search results for voice output.
-// Limited to 2 results with 150 char snippets for better voice output and token efficiency.
+// Limited to 3 results with 200 char snippets for better voice output and token efficiency.
 func FormatResults(results []SearxngResult) string {
 	var output strings.Builder
-	maxResults := 2
+	maxResults := 3
 	if len(results) < maxResults {
 		maxResults = len(results)
 	}
@@ -207,8 +207,8 @@ func FormatResults(results []SearxngResult) string {
 		result := results[i]
 		// More direct: just title and content without numbering/preamble
 		content := result.Content
-		if len(content) > 150 {
-			content = content[:150]
+		if len(content) > 200 {
+			content = content[:200]
 		}
 		output.WriteString(fmt.Sprintf("%s. %s. ", result.Title, content))
 	}

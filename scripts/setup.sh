@@ -243,6 +243,7 @@ fi
 
 # 2. Download Whisper models (multilingual - supports 99 languages)
 # Sizes: tiny (111MB, ~390MB RAM), base (198MB, ~740MB RAM), small (610MB, ~2.4GB RAM)
+# Default: Downloads both tiny (default runtime model) and small (for better accuracy when needed)
 echo
 echo -e "${GREEN}[2/4] Downloading Whisper STT models...${NC}"
 WHISPER_DIR="${MODELS_DIR}/whisper"
@@ -273,8 +274,8 @@ download_whisper_model() {
     echo -e "${GREEN}✓ Whisper ${model_size} installed${NC}"
 }
 
-# Download models based on WHISPER_MODELS environment variable or default to small
-WHISPER_MODELS="${WHISPER_MODELS:-small}"
+# Download models based on WHISPER_MODELS environment variable or default to tiny and small
+WHISPER_MODELS="${WHISPER_MODELS:-tiny small}"
 for model in ${WHISPER_MODELS}; do
     download_whisper_model "$model"
 done

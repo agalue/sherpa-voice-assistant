@@ -136,11 +136,24 @@ See the [main README Agentic Capabilities section](../README.md#agentic-capabili
 ```bash
 # From repository root (searxng/ directory contains docker-compose.yml)
 cd ../searxng
+
+# If starting for the first time or after 'down':
 docker compose up -d
+
+# If container already exists (to restart):
+docker compose restart
+
+# Check status:
+docker compose ps
+
 cd ../rust-impl
 
-# Stop when not needed
-cd ../searxng && docker compose down && cd ../rust-impl
+# Management commands:
+# docker compose stop      # Stop (keeps container)
+# docker compose start     # Start stopped container
+# docker compose restart   # Restart running container
+# docker compose down      # Stop and remove container
+# docker compose logs -f   # View logs
 ```
 
 **Note:** The `searxng/settings.yml` and `searxng/docker-compose.yml` files are included in the repository with optimized settings for minimal resource usage (~384MB RAM, 1 CPU core, Bing search).

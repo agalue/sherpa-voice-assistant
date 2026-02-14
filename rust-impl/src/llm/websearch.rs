@@ -193,8 +193,8 @@ impl WebSearchTool {
         let result_count = html.matches("class=\"result\"").count();
         debug!("Found {} result divs in HTML", result_count);
 
-        // Simple regex-free parsing - look for result divs (take top 2)
-        for (idx, section) in html.split("class=\"result\"").skip(1).take(2).enumerate() {
+        // Simple regex-free parsing - look for result divs (take top 3)
+        for (idx, section) in html.split("class=\"result\"").skip(1).take(3).enumerate() {
             // Extract title (between result__a tags)
             let title = section
                 .split("class=\"result__a\"")
@@ -237,11 +237,11 @@ impl WebSearchTool {
     /// Formatted results string.
     fn format_results(&self, results: &[(&str, &str)]) -> Result<String, SearchError> {
         let mut output = String::new();
-        let max_results = 2.min(results.len());
+        let max_results = 3.min(results.len());
 
         for (title, content) in results.iter().take(max_results) {
             // More direct: just title and content without numbering/preamble
-            output.push_str(&format!("{}.  {}. ", title, content.chars().take(150).collect::<String>()));
+            output.push_str(&format!("{}.  {}. ", title, content.chars().take(200).collect::<String>()));
         }
 
         Ok(output.trim().to_string())

@@ -104,7 +104,7 @@ nvcc --version  # Should show CUDA version
 
 ### 1. Download Models
 
-Run the setup script to download required models (default: ~500MB total):
+Run the setup script to download required models (default: ~900MB total):
 
 ```bash
 chmod +x scripts/setup.sh
@@ -113,8 +113,10 @@ chmod +x scripts/setup.sh
 
 This downloads:
 - **Silero-VAD**: Voice activity detection model
-- **Whisper small**: Multilingual speech recognition model (default, int8 quantized, 99 languages)
+- **Whisper tiny + small**: Multilingual speech recognition models (int8 quantized, 99 languages)
 - **Kokoro v1.0**: Multilingual text-to-speech model with natural voices
+
+**Note**: By default, both `tiny` (default runtime model) and `small` (for better accuracy) are downloaded (~721MB total).
 
 **Choosing Whisper Model Size:**
 
@@ -281,7 +283,7 @@ The voice assistant includes **agentic tool calling** powered by Ollama's functi
 - Two backends:
   - **SearXNG** (recommended): Privacy-respecting metasearch engine
   - **DuckDuckGo** (fallback): Automatic fallback when SearXNG unavailable
-- Returns top 2 results formatted for voice output
+- Returns top 3 results formatted for voice output
 
 ### Required LLM Model
 
@@ -347,7 +349,16 @@ The repository includes pre-configured files in `searxng/`:
 **2. Start SearXNG with Docker Compose:**
 ```bash
 cd searxng
+
+# If starting for the first time or after a stop:
 docker compose up -d
+
+# If container already exists (to restart):
+docker compose restart
+
+# Check status:
+docker compose ps
+
 cd ..
 ```
 
@@ -365,10 +376,24 @@ curl "http://localhost:8080/search?q=test&format=json"
 ./target/release/voice-assistant --searxng-url http://localhost:8080
 ```
 
-**5. Stop SearXNG when not needed:**
+**5. Managing SearXNG:**
 ```bash
 cd searxng
+
+# Stop (keeps container, quick restart):
+docker compose stop
+
+# Start stopped container:
+docker compose start
+
+# Restart running container:
+docker compose restart
+
+# Stop and remove container:
 docker compose down
+
+# View logs:
+docker compose logs -f
 ```
 
 **Notes:**
