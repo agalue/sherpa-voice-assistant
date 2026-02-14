@@ -18,7 +18,7 @@ audioadapter-buffers = "2"  # Buffer adapters for rubato
 
 # LLM interaction
 rig-core = { version = "0.30", default-features = false, features = ["reqwest-rustls"] }
-reqwest = { version = "0.13", default-features = false, features = ["json", "rustls-tls"] }
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"] }
 urlencoding = "2"
 
 # CLI and configuration

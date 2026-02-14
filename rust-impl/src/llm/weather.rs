@@ -107,6 +107,7 @@ pub enum WeatherError {
     #[error("Weather API error: {0}")]
     Message(String),
 }
+
 /// Arguments for the weather tool.
 #[derive(Deserialize)]
 pub struct WeatherArgs {
@@ -129,24 +130,8 @@ impl WeatherTool {
     /// # Errors
     /// Returns `WeatherError` if request fails.
     async fn get_current_ip(&self) -> Result<String, WeatherError> {
-        let cli = Client::builder().timeout(std::time::Duration::from_secs(5)).build().map_err(|e| {
-            info!("Failed to build HTTP client: {}", e);
-            WeatherError
-        })?;
-        let ip = cli
-            .get("https://ifconfig.me/ip")
-            .send()
-            .await
-            .map_err(|e| {
-                info!("Failed to get IP address: {}", e);
-                WeatherError
-            })?
-            .text()
-            .await
-            .map_err(|e| {
-                info!("Failed to read IP response: {}", e);
-                WeatherError
-            })?;
+        let cli = Client::builder().timeout(std::time::Duration::from_secs(5)).build()?;
+        let ip = cli.get("https://ifconfig.me/ip").send().await?.text().await?;
 
         // Trim whitespace (ifconfig.me includes trailing newline)
         Ok(ip.trim().to_string())
@@ -163,25 +148,9 @@ impl WeatherTool {
     /// # Errors
     /// Returns `WeatherError` if request fails.
     async fn get_coords_from_ip(&self, ipaddr: &str) -> Result<(f64, f64, String), WeatherError> {
-        let cli = Client::builder().timeout(std::time::Duration::from_secs(5)).build().map_err(|e| {
-            info!("Failed to build HTTP client: {}", e);
-            WeatherError
-        })?;
+        let cli = Client::builder().timeout(std::time::Duration::from_secs(5)).build()?;
         // Note: ip-api.com free tier doesn't support HTTPS
-        let ipgeo = cli
-            .get(format!("http://ip-api.com/json/{}", ipaddr))
-            .send()
-            .await
-            .map_err(|e| {
-                info!("IP geolocation request failed: {}", e);
-                WeatherError
-            })?
-            .json::<IPGeolocation>()
-            .await
-            .map_err(|e| {
-                info!("Failed to parse IP geolocation response: {}", e);
-                WeatherError
-            })?;
+        let ipgeo = cli.get(format!("http://ip-api.com/json/{}", ipaddr)).send().await?.json::<IPGeolocation>().await?;
 
         let location = format!("{}, {}, {}", ipgeo.city, ipgeo.region, ipgeo.country_code);
         Ok((ipgeo.lat, ipgeo.lon, location))
@@ -199,36 +168,25 @@ impl WeatherTool {
     /// Returns `WeatherError` if request fails or city not found.
     async fn get_coords_from_city(&self, city: &str) -> Result<(f64, f64, String), WeatherError> {
         if city.is_empty() {
-            return Err(WeatherError);
+            return Err(WeatherError::Message("City name is empty".to_string()));
         }
-        let cli = Client::builder().timeout(std::time::Duration::from_secs(5)).build().map_err(|e| {
-            info!("Failed to build HTTP client: {}", e);
-            WeatherError
-        })?;
+        let cli = Client::builder().timeout(std::time::Duration::from_secs(5)).build()?;
         // URL encode city name for special characters
         let encoded_city = urlencoding::encode(city);
         let response = cli
             .get(format!("https://nominatim.openstreetmap.org/search?q={}&format=json&limit=1", encoded_city))
             .header(USER_AGENT, "Mozilla/5.0 (compatible; VoiceAssistant/1.0)")
             .send()
-            .await
-            .map_err(|e| {
-                info!("Nominatim geocoding request failed for '{}': {}", city, e);
-                WeatherError
-            })?
+            .await?
             .json::<Vec<Geolocation>>()
-            .await
-            .map_err(|e| {
-                info!("Failed to parse Nominatim response: {}", e);
-                WeatherError
-            })?;
+            .await?;
 
         if response.is_empty() {
-            Err(WeatherError)
+            Err(WeatherError::Message(format!("City not found: {}", city)))
         } else {
             Ok((
-                response[0].lat.parse().map_err(|_| WeatherError)?,
-                response[0].lon.parse().map_err(|_| WeatherError)?,
+                response[0].lat.parse().map_err(|_| WeatherError::Message("Invalid latitude".to_string()))?,
+                response[0].lon.parse().map_err(|_| WeatherError::Message("Invalid longitude".to_string()))?,
                 response[0].display_name.clone(),
             ))
         }
@@ -247,10 +205,7 @@ impl WeatherTool {
     /// # Errors
     /// Returns `WeatherError` if request fails.
     async fn get_weather_data(&self, lat: f64, lon: f64, location: &str) -> Result<String, WeatherError> {
-        let cli = Client::builder().timeout(std::time::Duration::from_secs(5)).build().map_err(|e| {
-            info!("Failed to build HTTP client: {}", e);
-            WeatherError
-        })?;
+        let cli = Client::builder().timeout(std::time::Duration::from_secs(5)).build()?;
         let weather = cli
             .get(format!(
                 "https://api.open-meteo.com/v1/forecast?latitude={}&longitude={}&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,rain,showers,snowfall",
@@ -258,17 +213,9 @@ impl WeatherTool {
             ))
             .header(USER_AGENT, "Mozilla/5.0 (compatible; VoiceAssistant/1.0)")
             .send()
-            .await
-            .map_err(|e| {
-                info!("Weather API request failed: {}", e);
-                WeatherError
-            })?
+            .await?
             .json::<WeatherResponse>()
-            .await
-            .map_err(|e| {
-                info!("Failed to parse weather response: {}", e);
-                WeatherError
-            })?;
+            .await?;
 
         Ok(weather.format_with_location(location))
     }
