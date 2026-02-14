@@ -221,8 +221,8 @@ check_ollama() {
     
     echo -e "${GREEN}✓ Ollama is installed${NC}"
     
-    # Check if default model is available
-    if ! ollama list | grep -q "qwen2.5:1.5b"; then
+    # Check if default model is available (using fixed string match to handle dots/colons in model names)
+    if ! ollama list | awk '{print $1}' | grep -Fxq "qwen2.5:1.5b"; then
         echo -e "${YELLOW}⚠ Default model (qwen2.5:1.5b) not found${NC}"
         echo -e "${YELLOW}  Run: ollama pull qwen2.5:1.5b${NC}"
     else
