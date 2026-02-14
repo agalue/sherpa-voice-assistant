@@ -59,14 +59,14 @@ configure_ollama() {
     print_status "Creating systemd override for Ollama..."
     sudo mkdir -p /etc/systemd/system/ollama.service.d
     
-    cat << 'EOF' | sudo tee /etc/systemd/system/ollama.service.d/override.conf > /dev/null
+    cat << EOF | sudo tee /etc/systemd/system/ollama.service.d/override.conf > /dev/null
 [Service]
 Environment="OLLAMA_NUM_PARALLEL=1"
 Environment="OLLAMA_MAX_LOADED_MODELS=1"
 Environment="OLLAMA_NUM_CTX=1024"
 Environment="OLLAMA_KEEP_ALIVE=-1"
 Environment="OLLAMA_MAX_VRAM=3221225472"
-Environment="OLLAMA_HOST=0.0.0.0:11434"
+Environment="OLLAMA_HOST=${JETSON_OLLAMA_HOST:-127.0.0.1:11434}"
 EOF
     
     # Reload and restart
