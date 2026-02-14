@@ -150,7 +150,7 @@ func (s *Synthesizer) SynthesizeStreaming(text string) ([]*AudioOutput, error) {
 // SplitSentences splits text into sentences for streaming synthesis.
 // Intelligently splits on sentence boundaries (. ! ? \n) while avoiding:
 // - Decimal numbers (e.g., "10.5°C")
-// - Common abbreviations (e.g., "U.S.", "Dr.")
+// - Some abbreviations and initials (for example certain letter-based forms)
 // - Periods not followed by proper sentence starts
 // Exported for use by the TTS processor.
 func SplitSentences(text string) []string {
