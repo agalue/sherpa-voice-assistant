@@ -1,6 +1,6 @@
 services:
   searxng:
-    image: searxng/searxng:latest
+    image: searxng/searxng:2024.2.21
     container_name: searxng
     
     # Memory limits for Jetson Orin Nano

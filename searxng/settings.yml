@@ -1,7 +1,7 @@
 use_default_settings: true
 
 server:
-  secret_key: "local-development-key-not-for-production"
+  secret_key: "CHANGE_ME_USE_ENV_VAR_IN_PRODUCTION"  # Development placeholder, override via environment for non-local use
   limiter: false  # Disable rate limiting for local use
   image_proxy: false
   http_protocol_version: "1.1"  # Use HTTP/1.1 for lower memory
