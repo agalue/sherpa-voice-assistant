@@ -174,6 +174,9 @@ func (c *Client) Chat(ctx context.Context, userMessage string) (string, error) {
 			})
 		}
 
+		// Trim history after each iteration to prevent unbounded growth,
+		// including tool messages added in this iteration.
+		c.trimHistory()
 		// Loop continues: LLM will see tool results and generate final response
 	}
 
