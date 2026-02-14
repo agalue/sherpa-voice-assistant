@@ -46,6 +46,14 @@ pub struct SearchArgs {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct WebSearchTool {
     searxng_url: Option<String>,
+    #[serde(skip)]
+    #[serde(default = "default_client")]
+    client: Client,
+}
+
+/// Create default client for deserialization.
+fn default_client() -> Client {
+    Client::builder().timeout(std::time::Duration::from_secs(10)).build().expect("Failed to build default HTTP client")
 }
 
 impl WebSearchTool {
@@ -57,7 +65,8 @@ impl WebSearchTool {
     /// # Returns
     /// A new `WebSearchTool` instance.
     pub fn new(searxng_url: Option<String>) -> Self {
-        Self { searxng_url: searxng_url.filter(|url| !url.is_empty()) }
+        let client = Client::builder().timeout(std::time::Duration::from_secs(10)).build().expect("Failed to build HTTP client");
+        Self { searxng_url: searxng_url.filter(|url| !url.is_empty()), client }
     }
 
     /// Search using SearXNG instance.
@@ -73,16 +82,11 @@ impl WebSearchTool {
     /// Returns `SearchError` if the request fails or results cannot be parsed.
     async fn search_searxng(&self, query: &str, searxng_url: &str) -> Result<String, SearchError> {
         info!("Using SearXNG at {} for query: '{}'", searxng_url, query);
-        // No custom user agent needed for our own SearXNG instance
-        let cli = Client::builder().timeout(std::time::Duration::from_secs(10)).build().map_err(|e| {
-            info!("Failed to build HTTP client: {}", e);
-            SearchError::RequestFailed(format!("Failed to build HTTP client: {}", e))
-        })?;
 
         let url = format!("{}/search?q={}&format=json&categories=general", searxng_url, urlencoding::encode(query));
         debug!("SearXNG request URL: {}", url);
 
-        let response = cli.get(&url).header("Accept", "application/json").send().await.map_err(|e| {
+        let response = self.client.get(&url).header("Accept", "application/json").send().await.map_err(|e| {
             info!("SearXNG request failed: {}", e);
             SearchError::RequestFailed(format!("SearXNG request failed: {}", e))
         })?;
@@ -126,23 +130,21 @@ impl WebSearchTool {
     /// Returns `SearchError` if the request fails or results cannot be parsed.
     async fn search_duckduckgo(&self, query: &str) -> Result<String, SearchError> {
         info!("Using DuckDuckGo for query: '{}'", query);
-        // Generic user agent without OS specifics (works on any platform)
-        let cli = Client::builder()
-            .user_agent("Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
-            .timeout(std::time::Duration::from_secs(10))
-            .build()
-            .map_err(|e| {
-                info!("Failed to build HTTP client: {}", e);
-                SearchError::RequestFailed(format!("Failed to build HTTP client: {}", e))
-            })?;
 
         let url = format!("https://html.duckduckgo.com/html/?q={}", urlencoding::encode(query));
         debug!("DuckDuckGo URL: {}", url);
 
-        let response = cli.get(&url).send().await.map_err(|e| {
-            info!("DuckDuckGo request failed: {}", e);
-            SearchError::RequestFailed(format!("DuckDuckGo request failed: {}", e))
-        })?;
+        // DuckDuckGo requires a browser-like user agent to avoid blocking
+        let response = self
+            .client
+            .get(&url)
+            .header("User-Agent", "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
+            .send()
+            .await
+            .map_err(|e| {
+                info!("DuckDuckGo request failed: {}", e);
+                SearchError::RequestFailed(format!("DuckDuckGo request failed: {}", e))
+            })?;
 
         let status = response.status();
         if !status.is_success() {
@@ -228,7 +230,7 @@ impl WebSearchTool {
     }
 
     /// Format search results for voice output.
-    /// Limited to 2 results with 150 char snippets for better voice output and token efficiency.
+    /// Limited to 3 results with 200 char snippets for better voice output and token efficiency.
     ///
     /// # Arguments
     /// * `results` - Vector of (title, content) references
