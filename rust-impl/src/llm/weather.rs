@@ -94,9 +94,19 @@ impl WeatherResponse {
 
 /// Weather tool error type.
 #[derive(Debug, thiserror::Error)]
-#[error("Weather API error")]
-pub struct WeatherError;
+pub enum WeatherError {
+    /// HTTP or network-level error when calling an external API.
+    #[error("Weather API HTTP error: {0}")]
+    Http(#[from] reqwest::Error),
 
+    /// Failed to parse the weather or geolocation API response.
+    #[error("Weather API response parse error: {0}")]
+    Parse(#[from] serde_json::Error),
+
+    /// Generic weather tool error with a custom message.
+    #[error("Weather API error: {0}")]
+    Message(String),
+}
 /// Arguments for the weather tool.
 #[derive(Deserialize)]
 pub struct WeatherArgs {
