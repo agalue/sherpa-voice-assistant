@@ -290,13 +290,16 @@ Tool calling requires models that support function calling. The default model ha
 - ✅ Tool/function calling
 - ✅ Fast and memory-efficient (~1GB)
 
+> **⚠️ Tool Calling Accuracy Warning**  
+> Tool calling accuracy depends heavily on model size. While smaller models (1.5b, 3b) support function calling, **they have reduced accuracy** in determining when and how to use tools. The 7B models provide significantly better tool usage decisions. For memory-constrained devices like Jetson Orin Nano, this is a known trade-off between memory usage and tool calling reliability.
+
 ```bash
 # Pull the default model (one time)
 ollama pull qwen2.5:1.5b
 
 # Or use larger models for better quality
 ollama pull qwen2.5:3b   # ~2GB, better quality
-ollama pull qwen2.5:7b   # ~4.9GB, best quality
+ollama pull qwen2.5:7b   # ~4.9GB, best quality, excellent tool calling
 ```
 
 **Other compatible models:**

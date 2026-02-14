@@ -12,6 +12,16 @@ Running the voice assistant on Jetson Orin Nano Super (8GB) with optimized memor
 ./scripts/jetson_setup.sh status
 ```
 
+## Known Limitations
+
+**⚠️ Tool Calling Accuracy**  
+Due to memory constraints, Jetson users must use smaller models (1.5b, 3b parameters). These models have **reduced accuracy** when using agentic tools (weather, web search) compared to 7B models. The assistant may:
+- Not recognize when to call a tool
+- Call tools unnecessarily
+- Format tool parameters incorrectly
+
+For best tool calling performance, 7B models are recommended, but these require significantly more memory (~4.9GB) and may not be feasible on 8GB devices running the full pipeline.
+
 ## Manual Configuration
 
 ### 1. Configure Ollama
