@@ -435,26 +435,30 @@ fi
 
 # Pre-load Ollama model on Jetson to prevent memory fragmentation
 if [[ "$IS_JETSON" == "true" ]]; then
-    # Extract model from command line args (look for -ollama-model or --ollama-model)
+    # Extract model and URL from command line args
     OLLAMA_MODEL=""
+    OLLAMA_URL=""
     for ((i=1; i<=$#; i++)); do
         if [[ "${!i}" == "-ollama-model" || "${!i}" == "--ollama-model" ]]; then
             j=$((i+1))
             OLLAMA_MODEL="${!j}"
-            break
+        elif [[ "${!i}" == "-ollama-url" || "${!i}" == "--ollama-url" ]]; then
+            j=$((i+1))
+            OLLAMA_URL="${!j}"
         fi
     done
 
-    # Default to qwen2.5:1.5b if not specified
+    # Defaults
     OLLAMA_MODEL="${OLLAMA_MODEL:-qwen2.5:1.5b}"
+    OLLAMA_URL="${OLLAMA_URL:-http://localhost:11434}"
 
     # Check if Ollama is responding
-    if curl -s http://localhost:11434/api/version > /dev/null 2>&1; then
+    if curl -s "${OLLAMA_URL}/api/version" > /dev/null 2>&1; then
         # Check if model exists (using fixed string match to handle dots/colons in model names)
         if ollama list 2>/dev/null | awk '{print $1}' | grep -Fxq "$OLLAMA_MODEL"; then
             echo "⚡ Jetson detected: Pre-loading Ollama model $OLLAMA_MODEL..."
             # Pre-load with reduced context to reserve GPU memory before voice assistant starts
-            curl -s http://localhost:11434/api/generate -d "{
+            curl -s "${OLLAMA_URL}/api/generate" -d "{
                 \"model\": \"$OLLAMA_MODEL\",
                 \"prompt\": \".\",
                 \"stream\": false,
