@@ -91,7 +91,7 @@ impl Synthesizer {
 ///
 /// Intelligently splits on sentence boundaries (. ! ? \n) while avoiding:
 /// - Decimal numbers (e.g., "10.5°C")
-/// - Common abbreviations (e.g., "U.S.", "Dr.")
+/// - Single-letter abbreviations (e.g., the letters in "U.S.")
 /// - Periods not followed by proper sentence starts
 pub fn split_sentences(text: &str) -> Vec<String> {
     let mut sentences = Vec::new();
