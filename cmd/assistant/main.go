@@ -14,6 +14,7 @@ import (
 	"os/signal"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/agalue/voice-assistant/internal/audio"
@@ -35,7 +36,7 @@ func main() {
 	log.Printf("🔊 TTS voice: %s (speaker %d)", cfg.TTSVoice, cfg.TTSSpeakerID)
 
 	// Create context for graceful shutdown
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, os.Kill)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
 	// Create LLM client and verify connection
