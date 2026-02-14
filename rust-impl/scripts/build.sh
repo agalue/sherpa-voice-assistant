@@ -666,8 +666,8 @@ if [[ "$IS_JETSON" == "true" ]]; then
     
     # Check if Ollama is responding
     if curl -s http://localhost:11434/api/version > /dev/null 2>&1; then
-        # Check if model exists
-        if ollama list 2>/dev/null | grep -q "$OLLAMA_MODEL"; then
+        # Check if model exists (using fixed string match to handle dots/colons in model names)
+        if ollama list 2>/dev/null | awk '{print $1}' | grep -Fxq "$OLLAMA_MODEL"; then
             echo "⚡ Jetson detected: Pre-loading Ollama model $OLLAMA_MODEL..."
             # Pre-load with reduced context to reserve GPU memory before voice assistant starts
             curl -s http://localhost:11434/api/generate -d "{
