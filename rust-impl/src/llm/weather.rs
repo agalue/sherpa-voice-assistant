@@ -123,7 +123,8 @@ impl WeatherTool {
             info!("Failed to build HTTP client: {}", e);
             WeatherError
         })?;
-        cli.get("https://ifconfig.me/ip")
+        let ip = cli
+            .get("https://ifconfig.me/ip")
             .send()
             .await
             .map_err(|e| {
@@ -135,7 +136,10 @@ impl WeatherTool {
             .map_err(|e| {
                 info!("Failed to read IP response: {}", e);
                 WeatherError
-            })
+            })?;
+
+        // Trim whitespace (ifconfig.me includes trailing newline)
+        Ok(ip.trim().to_string())
     }
 
     /// Get coordinates from IP address using geolocation API.
