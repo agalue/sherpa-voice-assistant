@@ -119,9 +119,19 @@ pub struct WeatherArgs {
 /// Uses Open-Meteo API for weather data, OpenStreetMap for geocoding,
 /// and ip-api.com for IP-based geolocation when no city is specified.
 #[derive(Deserialize, Serialize)]
-pub struct WeatherTool;
+pub struct WeatherTool {
+    #[serde(skip)]
+    client: Client,
+}
 
 impl WeatherTool {
+    /// Create a new weather tool instance with a default HTTP client.
+    pub fn new() -> Self {
+        WeatherTool {
+            client: Client::builder().timeout(std::time::Duration::from_secs(5)).build().expect("Failed to build HTTP client"),
+        }
+    }
+
     /// Get current public IP address.
     ///
     /// # Returns
@@ -130,8 +140,7 @@ impl WeatherTool {
     /// # Errors
     /// Returns `WeatherError` if request fails.
     async fn get_current_ip(&self) -> Result<String, WeatherError> {
-        let cli = Client::builder().timeout(std::time::Duration::from_secs(5)).build()?;
-        let ip = cli.get("https://ifconfig.me/ip").send().await?.text().await?;
+        let ip = self.client.get("https://ifconfig.me/ip").send().await?.text().await?;
 
         // Trim whitespace (ifconfig.me includes trailing newline)
         Ok(ip.trim().to_string())
@@ -148,9 +157,8 @@ impl WeatherTool {
     /// # Errors
     /// Returns `WeatherError` if request fails.
     async fn get_coords_from_ip(&self, ipaddr: &str) -> Result<(f64, f64, String), WeatherError> {
-        let cli = Client::builder().timeout(std::time::Duration::from_secs(5)).build()?;
         // Note: ip-api.com free tier doesn't support HTTPS
-        let ipgeo = cli.get(format!("http://ip-api.com/json/{}", ipaddr)).send().await?.json::<IPGeolocation>().await?;
+        let ipgeo = self.client.get(format!("http://ip-api.com/json/{}", ipaddr)).send().await?.json::<IPGeolocation>().await?;
 
         let location = format!("{}, {}, {}", ipgeo.city, ipgeo.region, ipgeo.country_code);
         Ok((ipgeo.lat, ipgeo.lon, location))
@@ -170,10 +178,10 @@ impl WeatherTool {
         if city.is_empty() {
             return Err(WeatherError::Message("City name is empty".to_string()));
         }
-        let cli = Client::builder().timeout(std::time::Duration::from_secs(5)).build()?;
         // URL encode city name for special characters
         let encoded_city = urlencoding::encode(city);
-        let response = cli
+        let response = self
+            .client
             .get(format!("https://nominatim.openstreetmap.org/search?q={}&format=json&limit=1", encoded_city))
             .header(USER_AGENT, "Mozilla/5.0 (compatible; VoiceAssistant/1.0)")
             .send()
@@ -205,8 +213,7 @@ impl WeatherTool {
     /// # Errors
     /// Returns `WeatherError` if request fails.
     async fn get_weather_data(&self, lat: f64, lon: f64, location: &str) -> Result<String, WeatherError> {
-        let cli = Client::builder().timeout(std::time::Duration::from_secs(5)).build()?;
-        let weather = cli
+        let weather = self.client
             .get(format!(
                 "https://api.open-meteo.com/v1/forecast?latitude={}&longitude={}&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,rain,showers,snowfall",
                 lat, lon

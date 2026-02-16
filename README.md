@@ -935,68 +935,6 @@ The voice assistant will automatically detect CUDA availability and use GPU acce
 
 When developing this cross-platform project in VS Code, gopls (the Go language server) may show errors for platform-specific code that doesn't apply to your current OS. For example, on macOS you might see `[linux,amd64]` errors for Linux-specific imports.
 
-### Recommended VS Code Settings
-
-The project includes a `.vscode/settings.json` file that configures gopls to analyze only for your current platform. **You may need to update the `GOOS` and `GOARCH` values to match your system:**
-
-**macOS (Apple Silicon - M1/M2/M3/M4):**
-```json
-{
-    "gopls": {
-        "build.env": {
-            "CGO_ENABLED": "1",
-            "GOOS": "darwin",
-            "GOARCH": "arm64"
-        }
-    }
-}
-```
-
-**macOS (Intel):**
-```json
-{
-    "gopls": {
-        "build.env": {
-            "CGO_ENABLED": "1",
-            "GOOS": "darwin",
-            "GOARCH": "amd64"
-        }
-    }
-}
-```
-
-**Linux (x86_64):**
-```json
-{
-    "gopls": {
-        "build.env": {
-            "CGO_ENABLED": "1",
-            "GOOS": "linux",
-            "GOARCH": "amd64"
-        }
-    }
-}
-```
-
-**Linux (ARM64 / Jetson):**
-```json
-{
-    "gopls": {
-        "build.env": {
-            "CGO_ENABLED": "1",
-            "GOOS": "linux",
-            "GOARCH": "arm64"
-        }
-    }
-}
-```
-
-After modifying settings, restart the Go language server:
-1. Open Command Palette (`Cmd+Shift+P` on macOS, `Ctrl+Shift+P` on Linux)
-2. Run **"Go: Restart Language Server"**
-
-### Why This Is Needed
-
 This project uses Go build constraints (`//go:build darwin` / `//go:build linux`) to provide platform-specific sherpa-onnx bindings. By default, gopls may analyze files for all platforms, causing spurious errors for code that won't run on your current OS. Setting `GOOS` and `GOARCH` tells gopls to analyze only for your platform.
 
 ## Upgrading Dependencies
@@ -1017,8 +955,8 @@ For Linux CUDA builds, three files must stay in sync:
 
 | File | What to Update | Current Value |
 |------|----------------|---------------|
-| `go.mod` | `sherpa-onnx-go-linux` and `sherpa-onnx-go-macos` versions | `v1.12.24` |
-| `scripts/build.sh` | `SHERPA_VERSION` variable | `v1.12.24` |
+| `go.mod` | `sherpa-onnx-go-linux` and `sherpa-onnx-go-macos` versions | `v1.12.25` |
+| `scripts/build.sh` | `SHERPA_VERSION` variable | `v1.12.25` |
 
 The build script includes a **sanity check** that fails with clear instructions if versions mismatch.
 
