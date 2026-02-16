@@ -58,6 +58,9 @@ impl LlmClient {
             info!("Web search: Using DuckDuckGo (no SearXNG URL configured)");
         }
 
+        // Create weather tool
+        let weather_tool = WeatherTool::new();
+
         // Reduce context window and token limits to save GPU memory on
         // resource-constrained devices running STT/TTS models alongside LLM
         let agent = client
@@ -68,7 +71,7 @@ impl LlmClient {
                 "num_ctx": 1024,
                 "num_predict": 150
             }))
-            .tool(WeatherTool)
+            .tool(weather_tool)
             .tool(search_tool)
             .build();
 

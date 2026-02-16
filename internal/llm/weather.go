@@ -91,7 +91,7 @@ func (w *WeatherResponse) FormatWithLocation(location string) string {
 // GetCurrentIP fetches the current public IP address.
 func GetCurrentIP(ctx context.Context) (string, error) {
 	client := &http.Client{Timeout: 5 * time.Second}
-	req, err := http.NewRequestWithContext(ctx, "GET", "https://ifconfig.me/ip", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://ifconfig.me/ip", nil)
 	if err != nil {
 		return "", fmt.Errorf("failed to create IP request: %w", err)
 	}
@@ -116,7 +116,7 @@ func GetCoordsFromIP(ctx context.Context, ipAddr string) (lat, lon float64, loca
 	// Note: ip-api.com free tier doesn't support HTTPS
 	url := fmt.Sprintf("http://ip-api.com/json/%s", ipAddr)
 
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return 0, 0, "", fmt.Errorf("failed to create geolocation request: %w", err)
 	}
@@ -146,7 +146,7 @@ func GetCoordsFromCity(ctx context.Context, city string) (lat, lon float64, loca
 	encodedCity := url.QueryEscape(city)
 	url := fmt.Sprintf("https://nominatim.openstreetmap.org/search?q=%s&format=json&limit=1", encodedCity)
 
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return 0, 0, "", fmt.Errorf("failed to create geocoding request: %w", err)
 	}
@@ -186,7 +186,7 @@ func GetWeatherData(ctx context.Context, lat, lon float64, location string) (str
 		lat, lon,
 	)
 
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return "", fmt.Errorf("failed to create weather request: %w", err)
 	}

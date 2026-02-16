@@ -47,13 +47,7 @@ pub struct SearchArgs {
 pub struct WebSearchTool {
     searxng_url: Option<String>,
     #[serde(skip)]
-    #[serde(default = "default_client")]
     client: Client,
-}
-
-/// Create default client for deserialization.
-fn default_client() -> Client {
-    Client::builder().timeout(std::time::Duration::from_secs(10)).build().expect("Failed to build default HTTP client")
 }
 
 impl WebSearchTool {
@@ -66,21 +60,24 @@ impl WebSearchTool {
     /// A new `WebSearchTool` instance.
     pub fn new(searxng_url: Option<String>) -> Self {
         let client = Client::builder().timeout(std::time::Duration::from_secs(10)).build().expect("Failed to build HTTP client");
-        Self { searxng_url: searxng_url.filter(|url| !url.is_empty()), client }
+        Self { searxng_url, client }
     }
 
     /// Search using SearXNG instance.
     ///
     /// # Arguments
     /// * `query` - Search query string
-    /// * `searxng_url` - Base URL of SearXNG instance
     ///
     /// # Returns
     /// Formatted search results string.
     ///
     /// # Errors
     /// Returns `SearchError` if the request fails or results cannot be parsed.
-    async fn search_searxng(&self, query: &str, searxng_url: &str) -> Result<String, SearchError> {
+    async fn search_searxng(&self, query: &str) -> Result<String, SearchError> {
+        let searxng_url = match &self.searxng_url {
+            Some(url) => url,
+            None => return Err(SearchError::RequestFailed("SearXNG URL not configured".to_string())),
+        };
         info!("Using SearXNG at {} for query: '{}'", searxng_url, query);
 
         let url = format!("{}/search?q={}&format=json&categories=general", searxng_url, urlencoding::encode(query));
@@ -260,8 +257,8 @@ impl WebSearchTool {
     /// # Errors
     /// Returns `SearchError` if the request fails or results cannot be parsed.
     async fn search(&self, query: &str) -> Result<String, SearchError> {
-        if let Some(ref url) = self.searxng_url {
-            self.search_searxng(query, url).await
+        if self.searxng_url.is_some() {
+            self.search_searxng(query).await
         } else {
             self.search_duckduckgo(query).await
         }

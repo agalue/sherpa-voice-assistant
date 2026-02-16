@@ -37,7 +37,7 @@ func SearchSearxng(ctx context.Context, query, searxngURL string) (string, error
 	encodedQuery := url.QueryEscape(query)
 	searchURL := fmt.Sprintf("%s/search?q=%s&format=json&categories=general", searxngURL, encodedQuery)
 
-	req, err := http.NewRequestWithContext(ctx, "GET", searchURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, searchURL, nil)
 	if err != nil {
 		return "", fmt.Errorf("failed to create SearXNG request: %w", err)
 	}
@@ -84,7 +84,7 @@ func SearchDuckDuckGo(ctx context.Context, query string) (string, error) {
 	encodedQuery := url.QueryEscape(query)
 	searchURL := fmt.Sprintf("https://html.duckduckgo.com/html/?q=%s", encodedQuery)
 
-	req, err := http.NewRequestWithContext(ctx, "GET", searchURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, searchURL, nil)
 	if err != nil {
 		return "", fmt.Errorf("failed to create DuckDuckGo request: %w", err)
 	}
