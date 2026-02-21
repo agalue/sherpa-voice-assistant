@@ -101,9 +101,6 @@ func (c *Client) Chat(ctx context.Context, userMessage string) (string, error) {
 		Content: userMessage,
 	})
 
-	// Non-streaming mode
-	stream := false
-
 	// Agentic loop: keep calling LLM until no more tools are needed
 	maxIterations := 5 // Prevent infinite loops
 	for iteration := 0; iteration < maxIterations; iteration++ {
@@ -112,7 +109,8 @@ func (c *Client) Chat(ctx context.Context, userMessage string) (string, error) {
 			Model:    c.model,
 			Messages: c.history, // Pass history directly (includes system prompt)
 			Tools:    c.tools,   // Provide available tools
-			Stream:   &stream,
+			Stream:   new(false),
+			Think:    &api.ThinkValue{Value: false},
 			Options: map[string]any{
 				"temperature": c.temperature,
 				"num_predict": 150,  // Limit response length for voice output

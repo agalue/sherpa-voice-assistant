@@ -4,6 +4,7 @@
 //! - SearXNG: Privacy-respecting local metasearch engine (preferred)
 //! - DuckDuckGo: Fallback for convenience when SearXNG unavailable
 
+use regex::Regex;
 use reqwest::Client;
 use rig::completion::ToolDefinition;
 use rig::tool::Tool;
@@ -168,7 +169,7 @@ impl WebSearchTool {
         self.format_results(&results.iter().map(|(t, c)| (t.as_str(), c.as_str())).collect::<Vec<_>>())
     }
 
-    /// Parse DuckDuckGo HTML response.
+    /// Parse DuckDuckGo HTML response using regex for robust extraction.
     ///
     /// # Arguments
     /// * `html` - HTML response text
@@ -188,41 +189,48 @@ impl WebSearchTool {
             info!("DuckDuckGo may be blocking requests (captcha/blocked detected)");
         }
 
-        // Count potential result divs
-        let result_count = html.matches("class=\"result\"").count();
-        debug!("Found {} result divs in HTML", result_count);
+        // Extract result links with regex: <a class="result__a" href="...">Title</a>
+        let link_regex = Regex::new(r#"<a[^>]*class="[^"]*result__a[^"]*"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)</a>"#)
+            .map_err(|e| SearchError::ParseFailed(format!("Failed to compile link regex: {}", e)))?;
+        let link_matches: Vec<_> = link_regex.captures_iter(html).take(5).collect(); // Get top 5 to ensure we have 3 good ones
 
-        // Simple regex-free parsing - look for result divs (take top 3)
-        for (idx, section) in html.split("class=\"result\"").skip(1).take(3).enumerate() {
-            // Extract title (between result__a tags)
-            let title = section
-                .split("class=\"result__a\"")
-                .nth(1)
-                .and_then(|s| s.split('>').nth(1))
-                .and_then(|s| s.split('<').next())
-                .map(html_unescape)
-                .unwrap_or_default();
+        // Extract snippets: <a class="result__snippet">...</a>
+        let snippet_regex =
+            Regex::new(r#"<a class="result__snippet[^"]*"[^>]*>([\s\S]*?)</a>"#).map_err(|e| SearchError::ParseFailed(format!("Failed to compile snippet regex: {}", e)))?;
+        let snippet_matches: Vec<_> = snippet_regex.captures_iter(html).take(5).collect();
 
-            // Extract snippet (between result__snippet tags)
-            let snippet = section
-                .split("class=\"result__snippet\"")
-                .nth(1)
-                .and_then(|s| s.split('>').nth(1))
-                .and_then(|s| s.split('<').next())
-                .map(html_unescape)
-                .unwrap_or_default();
+        if link_matches.is_empty() {
+            info!("No result links found in DuckDuckGo HTML");
+            return Ok(results);
+        }
 
-            debug!("DuckDuckGo result {}: title='{}', snippet_len={}", idx + 1, title, snippet.len());
+        debug!("Found {} link matches and {} snippet matches", link_matches.len(), snippet_matches.len());
+
+        // Take top 3 results
+        let max_results = 3.min(link_matches.len());
+
+        for i in 0..max_results {
+            let caps = &link_matches[i];
+
+            // Decode DuckDuckGo redirect URL to get actual destination
+            let _url = decode_ddg_redirect_url(&caps[1]); // URL not used in voice output, but decoded for accuracy
+
+            // Extract and clean title
+            let title = strip_html_tags(&caps[2]).trim().to_string();
+
+            // Extract snippet if available
+            let snippet = if i < snippet_matches.len() {
+                strip_html_tags(&snippet_matches[i][1]).trim().to_string()
+            } else {
+                String::new()
+            };
 
             if !title.is_empty() {
-                results.push((title, snippet));
+                results.push((html_unescape(&title), html_unescape(&snippet)));
             }
         }
 
-        if results.is_empty() {
-            debug!("No results parsed from DuckDuckGo HTML");
-        }
-
+        info!("Parsed {} results from DuckDuckGo", results.len());
         Ok(results)
     }
 
@@ -265,6 +273,28 @@ impl WebSearchTool {
     }
 }
 
+/// Decode DuckDuckGo redirect URLs to extract actual destination.
+/// DuckDuckGo wraps URLs like: //duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com&rut=...
+fn decode_ddg_redirect_url(raw_url: &str) -> String {
+    // Look for uddg= parameter which contains the actual URL
+    if let Some(idx) = raw_url.find("uddg=") {
+        let encoded = &raw_url[idx + 5..];
+        // Split on & to get just the encoded URL part
+        let encoded = if let Some(amp_idx) = encoded.find('&') { &encoded[..amp_idx] } else { encoded };
+        // Decode the URL
+        if let Ok(decoded) = urlencoding::decode(encoded) {
+            return decoded.into_owned();
+        }
+    }
+    raw_url.to_string()
+}
+
+/// Strip HTML tags from text using regex.
+fn strip_html_tags(text: &str) -> String {
+    let tag_regex = Regex::new(r"<[^>]+>").expect("Failed to compile tag regex");
+    tag_regex.replace_all(text, "").to_string()
+}
+
 /// Unescape basic HTML entities.
 fn html_unescape(s: &str) -> String {
     s.replace("&amp;", "&")
@@ -301,5 +331,155 @@ impl Tool for WebSearchTool {
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         info!("🔍 Searching web for: {}", args.query);
         self.search(&args.query).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_strip_html_tags() {
+        let html = "<b>Hello</b> <i>World</i>";
+        assert_eq!(strip_html_tags(html), "Hello World");
+    }
+
+    #[test]
+    fn test_strip_html_tags_nested() {
+        let html = "<div><span>Test</span></div>";
+        assert_eq!(strip_html_tags(html), "Test");
+    }
+
+    #[test]
+    fn test_html_unescape() {
+        assert_eq!(html_unescape("Hello &amp; World"), "Hello & World");
+        assert_eq!(html_unescape("&lt;test&gt;"), "<test>");
+        assert_eq!(html_unescape("&quot;quoted&quot;"), "\"quoted\"");
+        assert_eq!(html_unescape("&#x27;apostrophe&#39;"), "'apostrophe'");
+    }
+
+    #[test]
+    fn test_decode_ddg_redirect_url() {
+        // With uddg parameter and trailing params
+        let url1 = "https://duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Fpath%3Fa%3D1&rut=test";
+        assert_eq!(decode_ddg_redirect_url(url1), "https://example.com/path?a=1");
+
+        // Without trailing parameters
+        let url2 = "https://duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com";
+        assert_eq!(decode_ddg_redirect_url(url2), "https://example.com");
+
+        // Non-redirect URL (should return as-is)
+        let url3 = "https://example.com/direct";
+        assert_eq!(decode_ddg_redirect_url(url3), "https://example.com/direct");
+
+        // Empty string
+        assert_eq!(decode_ddg_redirect_url(""), "");
+    }
+
+    #[test]
+    fn test_parse_duckduckgo_html_empty() {
+        let tool = WebSearchTool::new(None);
+        let html = "<html>No results here</html>";
+        let results = tool.parse_duckduckgo_html(html).expect("Failed to parse");
+        assert_eq!(results.len(), 0);
+    }
+
+    #[test]
+    fn test_parse_duckduckgo_html_with_data() {
+        let tool = WebSearchTool::new(None);
+        // Real DuckDuckGo HTML structure
+        let html = r#"
+            <div class="result__body">
+                <h2 class="result__title">
+                    <a rel="nofollow" class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fgo.dev%2F&amp;rut=76be0d5c">The Go Programming Language</a>
+                </h2>
+                <a class="result__snippet" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fgo.dev%2F&amp;rut=76be0d5c">Go is an open source programming language that makes it simple to build secure, scalable systems.</a>
+            </div>
+        "#;
+        let results = tool.parse_duckduckgo_html(html).expect("Failed to parse");
+        assert_eq!(results.len(), 1);
+        assert!(results[0].0.contains("The Go Programming Language"));
+        assert!(results[0].1.contains("open source programming language"));
+    }
+
+    #[test]
+    fn test_parse_duckduckgo_html_decodes_redirect_url() {
+        let tool = WebSearchTool::new(None);
+        // Real DuckDuckGo redirect URL structure
+        let html = r#"
+            <div class="result__body">
+                <h2 class="result__title">
+                    <a rel="nofollow" class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Fpath%3Fquery%3D1&amp;rut=test123">Example Site</a>
+                </h2>
+                <a class="result__snippet" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Fpath%3Fquery%3D1&amp;rut=test123">Example description with content</a>
+            </div>
+        "#;
+        let results = tool.parse_duckduckgo_html(html).expect("Failed to parse");
+        assert_eq!(results.len(), 1);
+        assert!(results[0].0.contains("Example Site"));
+
+        // Verify URL decoding works
+        let decoded = decode_ddg_redirect_url("//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Fpath%3Fquery%3D1&rut=test123");
+        assert!(decoded.contains("https://example.com/path?query=1"));
+    }
+
+    #[test]
+    fn test_parse_duckduckgo_html_max_results() {
+        let tool = WebSearchTool::new(None);
+        // Create HTML with 5 results using real DuckDuckGo structure
+        let html = r#"
+            <div class="result__body">
+                <a class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample1.com">Title 1</a>
+                <a class="result__snippet">Snippet 1</a>
+            </div>
+            <div class="result__body">
+                <a class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample2.com">Title 2</a>
+                <a class="result__snippet">Snippet 2</a>
+            </div>
+            <div class="result__body">
+                <a class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample3.com">Title 3</a>
+                <a class="result__snippet">Snippet 3</a>
+            </div>
+            <div class="result__body">
+                <a class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample4.com">Title 4</a>
+                <a class="result__snippet">Snippet 4</a>
+            </div>
+            <div class="result__body">
+                <a class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample5.com">Title 5</a>
+                <a class="result__snippet">Snippet 5</a>
+            </div>
+        "#;
+        let results = tool.parse_duckduckgo_html(html).expect("Failed to parse");
+        // Should limit to 3 results
+        assert_eq!(results.len(), 3);
+    }
+
+    #[test]
+    fn test_parse_duckduckgo_html_strips_html_in_snippet() {
+        let tool = WebSearchTool::new(None);
+        // Real DuckDuckGo sometimes includes bold tags in snippets
+        let html = r#"
+            <div class="result__body">
+                <a class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com">Example Title</a>
+                <a class="result__snippet">This is a <b>bold</b> snippet with <i>italic</i> text</a>
+            </div>
+        "#;
+        let results = tool.parse_duckduckgo_html(html).expect("Failed to parse");
+        assert_eq!(results.len(), 1);
+        assert!(!results[0].1.contains("<b>"));
+        assert!(!results[0].1.contains("</b>"));
+        assert!(results[0].1.contains("bold snippet"));
+    }
+
+    #[test]
+    fn test_format_results_truncates_long_content() {
+        let tool = WebSearchTool::new(None);
+        // Create content with 300 characters (should be truncated to 200)
+        let long_content = "a".repeat(300);
+        let results = vec![("Test", long_content.as_str())];
+        let output = tool.format_results(&results).expect("Failed to format");
+        // The formatted output should not contain all 300 characters
+        // (200 char limit + title + formatting should be less than 300)
+        assert!(output.len() < 250);
     }
 }

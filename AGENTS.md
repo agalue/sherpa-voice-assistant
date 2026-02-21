@@ -4,142 +4,72 @@ Real-time voice assistant (Go + Rust) for edge devices. Pipeline: Mic → VAD+Wh
 
 ## Core Architecture
 
-**Dual implementations share models** (`~/.voice-assistant/models/`) with identical behavior but language-specific optimizations.
+Dual implementations share models (`~/.voice-assistant/models/`) with identical behavior.
 
-### Critical Pattern: Lock-Free Audio
-Audio callbacks run on high-priority OS threads. **Never block or hold locks in audio callbacks.**
+### Critical Patterns
 
-**Rust** ([src/audio/capture.rs](rust-impl/src/audio/capture.rs)): Lock-free ring buffer → channel → callback thread → VAD
-```rust
-HeapRb::new(65536) → sync_channel(32) → vad_accept_waveform()
-```
+**Lock-Free Audio**: Audio callbacks run on high-priority OS threads. **Never block or hold locks in audio callbacks.**
+- **Rust**: `HeapRb` ring buffer → channel → VAD. **Go**: `sync.Pool` buffers + non-blocking `select/default`
 
-**Go** ([internal/audio/capture.go](internal/audio/capture.go)): Buffer pooling with non-blocking send
-```go
-buffer := float32Pool.Get().(*[]float32)
-select { case audioChan <- samples: default: }  // Never block
-```
+**Separate VAD/Transcription Locks**: VAD fast (<10ms), Whisper slow (100-500ms). Use independent mutexes to prevent glitches.
+- **Rust**: `Arc<Mutex<VadState>>` + `Mutex<WhisperRecognizer>`. **Go**: `atomic.Value` + `sync.RWMutex`
 
-### Separate VAD and Transcription Locks
-VAD is fast (<10ms), Whisper is slow (100-500ms). **Use independent mutexes** to prevent audio glitches.
+**Shutdown**: `running` flag = temporary pause, `shutdown` flag = permanent exit with timeout-based joins
 
-**Rust**: `Arc<Mutex<VadState>>` (VAD) + `Mutex<WhisperRecognizer>` (transcription)  
-**Go**: `atomic.Value` for state + `sync.RWMutex` for VAD access
+**Hardware Acceleration**: Auto-detected at runtime. Never hardcode providers.
+- **macOS**: `coreml` (ANE). **Linux + NVIDIA**: `cuda` (1 thread). **Linux CPU**: `cpu` (cores/3 threads)
 
-### Shutdown: Pause vs Stop
-- `running` flag: Temporary pause (half-duplex mode during playback)
-- `shutdown` flag: Permanent exit with timeout-based thread joins
-
-```rust
-self.shutdown.store(true, Ordering::SeqCst);
-drop(self.sender.take());  // Wake blocked operations
-std::thread::sleep(Duration::from_millis(100));
-if !handle.is_finished() { warn!("Thread didn't exit"); }
-```
-
-## Hardware Acceleration
-
-Auto-detected at runtime. Thread counts adjust based on provider:
-- **macOS**: `coreml` (ANE)
-- **Linux + NVIDIA**: `cuda` (1 thread - GPU handles parallelism)
-- **Linux CPU**: `cpu` (cores/3 threads)
-
-**Never hardcode providers.** See `normalize_thread_counts()` in config files.
-
-## Build Commands
+## Build & File Structure
 
 ```bash
-# Go (auto-detects CoreML/CUDA)
-./scripts/build.sh
-
-# Rust (auto-detects CoreML/CUDA)
-cd rust-impl && ./scripts/build.sh && cd ..
-
-# Rust - Always run clippy before committing (must have zero warnings)
-cd rust-impl && cargo clippy --release & cd ..
+./scripts/build.sh                    # Go (auto-detects CoreML/CUDA)
+cd rust-impl && ./scripts/build.sh    # Rust (auto-detects)
+cd rust-impl && cargo clippy --release # Must have zero warnings
 ```
 
-## File Structure
+**Key Directories**: `internal/{audio,stt,llm,config}` (Go), `rust-impl/src/{audio,stt,llm,config}` (Rust)
 
-```
-internal/audio/     # Go: malgo capture/playback, sync.Pool buffers
-internal/stt/       # Go: VAD + Whisper, atomic.Value state
-internal/llm/       # Go: Ollama client, connection pooling
-internal/config/    # Go: CLI flags, provider auto-detection
+## Code & Documentation
 
-rust-impl/src/audio/ # Rust: cpal + ringbuf, lock-free capture
-rust-impl/src/stt/   # Rust: Separate VAD/Whisper mutexes
-rust-impl/src/llm/   # Rust: RIG framework, 60s timeout
-rust-impl/src/config/ # Rust: Clap CLI (identical flags to Go)
-```
+**Go**: Use `defer` for cleanup, `sync.Pool` for allocations, `context.Context` for cancellation, non-blocking `select/default`, `atomic.Value`/`sync.RWMutex`.
 
-## Code Guidelines
+**Rust**: Never `unwrap()`/`expect()`/`unsafe` without justification. Use `parking_lot::Mutex`, `Arc<AtomicBool>`, lock-free structures (`ringbuf`) for audio.
 
-**Go Best Practices**:
-- Use `defer` for cleanup (mutex unlocks, channel closes)
-- Prefer `sync.Pool` for frequent allocations
-- Use `context.Context` for cancellation propagation
-- Buffered channels with `select/default` for non-blocking sends
-- `atomic.Value` for lock-free reads, `sync.RWMutex` when writes are rare
+**Logging**: `info!` = user events, `debug!` = internal state, `warn!` = recoverable issues
 
-**Rust Safety Patterns**:
-- **Never use `unwrap()` or `expect()`** - use proper error handling with `?` or `match`
-- **Never use `unsafe`** blocks without explicit justification in comments
-- Prefer `parking_lot::Mutex` over `std::sync::Mutex` for performance
-- Use `Arc<AtomicBool>` for shared flags, not `Arc<Mutex<bool>>`
-- Lock-free structures (`ringbuf`) over mutexes for audio path
+**LLM Prompt Must Include**: "Your responses will be read aloud - NEVER use markdown, asterisks, underscores, backticks, brackets, code blocks, bullet points"
 
-**Shared Conventions**:
-- `info!`: User-facing events (speech started, LLM response)
-- `debug!`: Internal state (buffer sizes, thread lifecycle)
-- `warn!`: Recoverable issues (thread timeout, buffer overflow)
+**Documentation**:
+- **Go**: `// Package`, `// FuncName`, document exported structs/fields/constants
+- **Rust**: `//!` modules, `///` functions with `# Arguments`/`# Returns`/`# Errors`, document public items
+- **Inline comments**: Only for complex algorithms, critical invariants (e.g., "never block audio callback"), workarounds. Never state the obvious.
 
-**LLM Prompt**: Must forbid markdown and emojis (responses are read aloud):
-```
-IMPORTANT: Your responses will be read aloud, so you must NEVER use markdown,
-asterisks, underscores, backticks, brackets, code blocks, bullet points...
-```
+## Testing
 
-## Documentation Standards
+**Write professional tests that verify critical behavior and prevent regressions.**
 
-### Go (`go doc`)
-- **Package**: `// Package name` + purpose
-- **Functions**: `// FuncName` + description. Add Parameters/Returns sections for complex cases
-- **Structs**: Document purpose + exported fields (inline or above)
-- **Constants**: Group related + explain value rationale
+**Test**:
+- Core algorithms (VAD, resampling, HTML parsing)
+- Data transformations with edge cases (URL decoding, entity unescaping)
+- Integration points with external data (parsing real DDG HTML)
+- Failure modes (empty, malformed input)
 
-### Rust (`cargo doc`)
-- **Module**: `//!` at top + purpose
-- **Functions**: `///` + `# Arguments`, `# Returns`, `# Errors` sections
-- **Structs**: `///` + document public fields with `///`
-- **Constants**: `///` + explain rationale
+**Don't Test**:
+- Trivial getters/setters
+- Third-party libraries
+- Language built-ins
+- Config struct initialization
 
-### Inline Comments
-**Use when:**
-- Complex algorithms, non-obvious safety/performance
-- Critical invariants (e.g., "never block audio callback")
-- Workarounds for library issues
+**Good Test Characteristics**:
+- Uses real production data (actual HTML, audio samples)
+- Tests behavior not implementation
+- Covers edge cases (empty, max size, malformed)
+- Fast (<100ms), deterministic, no network calls
+- Descriptive names that read like specifications
 
-**Never:**
-- Obvious code (refactor if unclear)
-- Restating what code does
+**Organization**: Go = `*_test.go` files. Rust = `#[cfg(test)] mod tests` at file bottom.
 
-**Examples:**
-```rust
-// Audio callback runs on high-priority OS thread - never block or hold locks
-if running_clone.load(Ordering::Relaxed) { ... }
-```
-```go
-// length_scale is inverse of speed (0.5 = 2x, 2.0 = 0.5x)
-ttsConfig.Model.Kokoro.LengthScale = 1.0 / cfg.Speed
-```
-
-### Checklist
-- [ ] All exported/public items documented
-- [ ] Struct fields documented (especially public)
-- [ ] Constants explain values/purpose
-- [ ] Rust `Result` functions have `# Errors`
-- [ ] Inline comments justified (explain "why" not "what")
+**Naming**: Go = `TestFunctionNameEdgeCase`. Rust = `test_function_name_edge_case`.
 
 ## Key Principles
 

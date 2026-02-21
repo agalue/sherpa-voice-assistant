@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -119,7 +120,7 @@ func SearchDuckDuckGo(ctx context.Context, query string) (string, error) {
 	return FormatResults(results), nil
 }
 
-// ParseDuckDuckGoHTML parses DuckDuckGo HTML response.
+// ParseDuckDuckGoHTML parses DuckDuckGo HTML response using regex for robust extraction.
 func ParseDuckDuckGoHTML(html string) []SearxngResult {
 	var results []SearxngResult
 
@@ -128,18 +129,42 @@ func ParseDuckDuckGoHTML(html string) []SearxngResult {
 		log.Println("DuckDuckGo may be blocking requests (captcha/blocked detected)")
 	}
 
-	// Simple parsing - look for result divs (take top 3)
-	sections := strings.Split(html, `class="result"`)
-	for i := 1; i < len(sections) && len(results) < 3; i++ {
-		section := sections[i]
+	// Extract result links with regex: <a class="result__a" href="...">Title</a>
+	linkRegex := regexp.MustCompile(`<a[^>]*class="[^"]*result__a[^"]*"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)</a>`)
+	linkMatches := linkRegex.FindAllStringSubmatch(html, 5) // Get top 5 to ensure we have 3 good ones
 
-		// Extract title (between result__a tags)
-		title := extractBetween(section, `class="result__a"`, "</a>")
-		title = strings.TrimSpace(stripHTML(title))
+	// Extract snippets: <a class="result__snippet">...</a>
+	snippetRegex := regexp.MustCompile(`<a class="result__snippet[^"]*"[^>]*>([\s\S]*?)</a>`)
+	snippetMatches := snippetRegex.FindAllStringSubmatch(html, 5)
 
-		// Extract snippet (between result__snippet tags)
-		snippet := extractBetween(section, `class="result__snippet"`, "</div>")
-		snippet = strings.TrimSpace(stripHTML(snippet))
+	if len(linkMatches) == 0 {
+		log.Println("No result links found in DuckDuckGo HTML")
+		return results
+	}
+
+	// Take top 3 results
+	maxResults := 3
+	if len(linkMatches) < maxResults {
+		maxResults = len(linkMatches)
+	}
+
+	for i := 0; i < maxResults; i++ {
+		match := linkMatches[i]
+		if len(match) < 3 {
+			continue
+		}
+
+		// Decode DuckDuckGo redirect URL to get actual destination
+		_ = decodeDDGRedirectURL(match[1]) // URL not used in voice output, but decoded for accuracy
+
+		// Extract and clean title
+		title := strings.TrimSpace(stripHTML(match[2]))
+
+		// Extract snippet if available
+		snippet := ""
+		if i < len(snippetMatches) && len(snippetMatches[i]) > 1 {
+			snippet = strings.TrimSpace(stripHTML(snippetMatches[i][1]))
+		}
 
 		if title != "" {
 			results = append(results, SearxngResult{
@@ -149,38 +174,32 @@ func ParseDuckDuckGoHTML(html string) []SearxngResult {
 		}
 	}
 
+	log.Printf("Parsed %d results from DuckDuckGo", len(results))
 	return results
 }
 
-// extractBetween extracts text between start and end markers.
-func extractBetween(text, start, end string) string {
-	startIdx := strings.Index(text, start)
-	if startIdx == -1 {
-		return ""
-	}
-	text = text[startIdx+len(start):]
-
-	endIdx := strings.Index(text, end)
-	if endIdx == -1 {
-		return text
-	}
-	return text[:endIdx]
-}
-
-// stripHTML removes HTML tags from text (simple implementation).
-func stripHTML(text string) string {
-	var result strings.Builder
-	inTag := false
-	for _, c := range text {
-		if c == '<' {
-			inTag = true
-		} else if c == '>' {
-			inTag = false
-		} else if !inTag {
-			result.WriteRune(c)
+// decodeDDGRedirectURL decodes DuckDuckGo redirect URLs to extract actual destination.
+// DuckDuckGo wraps URLs like: https://duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com&rut=...
+func decodeDDGRedirectURL(rawURL string) string {
+	// Look for uddg= parameter which contains the actual URL
+	if idx := strings.Index(rawURL, "uddg="); idx != -1 {
+		encoded := rawURL[idx+5:]
+		// Split on & to get just the encoded URL part
+		if ampIdx := strings.Index(encoded, "&"); ampIdx != -1 {
+			encoded = encoded[:ampIdx]
+		}
+		// Decode the URL
+		if decoded, err := url.QueryUnescape(encoded); err == nil {
+			return decoded
 		}
 	}
-	return result.String()
+	return rawURL
+}
+
+// stripHTML removes HTML tags from text using regex.
+func stripHTML(text string) string {
+	tagRegex := regexp.MustCompile(`<[^>]+>`)
+	return tagRegex.ReplaceAllString(text, "")
 }
 
 // htmlUnescape unescapes basic HTML entities.
