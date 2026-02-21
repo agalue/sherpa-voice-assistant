@@ -165,7 +165,7 @@ func TestParseDuckDuckGoHTMLMaxResults(t *testing.T) {
 	}
 }
 
-func TestParseDuckDuckGoHTMLStripsHTMLInTitle(t *testing.T) {
+func TestParseDuckDuckGoHTMLStripsHTMLInSnippet(t *testing.T) {
 	// Real DuckDuckGo sometimes includes bold tags in snippets
 	html := `
 		<div class="result__body">

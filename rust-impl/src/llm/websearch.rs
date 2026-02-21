@@ -10,7 +10,8 @@ use rig::completion::ToolDefinition;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use tracing::{debug, info};
+use std::sync::OnceLock;
+use tracing::{debug, info, warn};
 
 /// SearXNG search result.
 #[derive(Debug, Deserialize)]
@@ -190,13 +191,11 @@ impl WebSearchTool {
         }
 
         // Extract result links with regex: <a class="result__a" href="...">Title</a>
-        let link_regex = Regex::new(r#"<a[^>]*class="[^"]*result__a[^"]*"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)</a>"#)
-            .map_err(|e| SearchError::ParseFailed(format!("Failed to compile link regex: {}", e)))?;
+        let link_regex = link_regex().ok_or_else(|| SearchError::ParseFailed("Failed to initialize link regex pattern".to_string()))?;
         let link_matches: Vec<_> = link_regex.captures_iter(html).take(5).collect(); // Get top 5 to ensure we have 3 good ones
 
         // Extract snippets: <a class="result__snippet">...</a>
-        let snippet_regex =
-            Regex::new(r#"<a class="result__snippet[^"]*"[^>]*>([\s\S]*?)</a>"#).map_err(|e| SearchError::ParseFailed(format!("Failed to compile snippet regex: {}", e)))?;
+        let snippet_regex = snippet_regex().ok_or_else(|| SearchError::ParseFailed("Failed to initialize snippet regex pattern".to_string()))?;
         let snippet_matches: Vec<_> = snippet_regex.captures_iter(html).take(5).collect();
 
         if link_matches.is_empty() {
@@ -273,6 +272,30 @@ impl WebSearchTool {
     }
 }
 
+/// Returns the lazily-initialized regex for DuckDuckGo result link anchors.
+fn link_regex() -> Option<&'static Regex> {
+    static LINK_REGEX: OnceLock<Option<Regex>> = OnceLock::new();
+    LINK_REGEX
+        .get_or_init(|| {
+            Regex::new(r#"<a[^>]*class="[^"]*result__a[^"]*"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)</a>"#).ok()
+        })
+        .as_ref()
+}
+
+/// Returns the lazily-initialized regex for DuckDuckGo result snippet anchors.
+fn snippet_regex() -> Option<&'static Regex> {
+    static SNIPPET_REGEX: OnceLock<Option<Regex>> = OnceLock::new();
+    SNIPPET_REGEX
+        .get_or_init(|| Regex::new(r#"<a class="result__snippet[^"]*"[^>]*>([\s\S]*?)</a>"#).ok())
+        .as_ref()
+}
+
+/// Returns the lazily-initialized regex for stripping HTML tags.
+fn tag_regex() -> Option<&'static Regex> {
+    static TAG_REGEX: OnceLock<Option<Regex>> = OnceLock::new();
+    TAG_REGEX.get_or_init(|| Regex::new(r"<[^>]+>").ok()).as_ref()
+}
+
 /// Decode DuckDuckGo redirect URLs to extract actual destination.
 /// DuckDuckGo wraps URLs like: //duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com&rut=...
 fn decode_ddg_redirect_url(raw_url: &str) -> String {
@@ -289,10 +312,15 @@ fn decode_ddg_redirect_url(raw_url: &str) -> String {
     raw_url.to_string()
 }
 
-/// Strip HTML tags from text using regex.
+/// Strip HTML tags from text using a lazily-initialized static regex.
 fn strip_html_tags(text: &str) -> String {
-    let tag_regex = Regex::new(r"<[^>]+>").expect("Failed to compile tag regex");
-    tag_regex.replace_all(text, "").to_string()
+    match tag_regex() {
+        Some(re) => re.replace_all(text, "").to_string(),
+        None => {
+            warn!("HTML tag regex unavailable; returning text unstripped");
+            text.to_string()
+        }
+    }
 }
 
 /// Unescape basic HTML entities.
