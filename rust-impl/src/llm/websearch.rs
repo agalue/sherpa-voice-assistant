@@ -276,18 +276,14 @@ impl WebSearchTool {
 fn link_regex() -> Option<&'static Regex> {
     static LINK_REGEX: OnceLock<Option<Regex>> = OnceLock::new();
     LINK_REGEX
-        .get_or_init(|| {
-            Regex::new(r#"<a[^>]*class="[^"]*result__a[^"]*"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)</a>"#).ok()
-        })
+        .get_or_init(|| Regex::new(r#"<a[^>]*class="[^"]*result__a[^"]*"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)</a>"#).ok())
         .as_ref()
 }
 
 /// Returns the lazily-initialized regex for DuckDuckGo result snippet anchors.
 fn snippet_regex() -> Option<&'static Regex> {
     static SNIPPET_REGEX: OnceLock<Option<Regex>> = OnceLock::new();
-    SNIPPET_REGEX
-        .get_or_init(|| Regex::new(r#"<a class="result__snippet[^"]*"[^>]*>([\s\S]*?)</a>"#).ok())
-        .as_ref()
+    SNIPPET_REGEX.get_or_init(|| Regex::new(r#"<a class="result__snippet[^"]*"[^>]*>([\s\S]*?)</a>"#).ok()).as_ref()
 }
 
 /// Returns the lazily-initialized regex for stripping HTML tags.
