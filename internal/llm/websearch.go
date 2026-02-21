@@ -14,6 +14,13 @@ import (
 	"time"
 )
 
+// Package-level compiled regexes for DuckDuckGo HTML parsing and tag stripping.
+var (
+	linkRegex    = regexp.MustCompile(`<a[^>]*class="[^"]*result__a[^"]*"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)</a>`)
+	snippetRegex = regexp.MustCompile(`<a class="result__snippet[^"]*"[^>]*>([\s\S]*?)</a>`)
+	htmlTagRegex = regexp.MustCompile(`<[^>]+>`)
+)
+
 // SearchArgs is the arguments for the search tool.
 type SearchArgs struct {
 	Query string `json:"query"`
@@ -130,11 +137,9 @@ func ParseDuckDuckGoHTML(html string) []SearxngResult {
 	}
 
 	// Extract result links with regex: <a class="result__a" href="...">Title</a>
-	linkRegex := regexp.MustCompile(`<a[^>]*class="[^"]*result__a[^"]*"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)</a>`)
 	linkMatches := linkRegex.FindAllStringSubmatch(html, 5) // Get top 5 to ensure we have 3 good ones
 
 	// Extract snippets: <a class="result__snippet">...</a>
-	snippetRegex := regexp.MustCompile(`<a class="result__snippet[^"]*"[^>]*>([\s\S]*?)</a>`)
 	snippetMatches := snippetRegex.FindAllStringSubmatch(html, 5)
 
 	if len(linkMatches) == 0 {
@@ -196,10 +201,9 @@ func decodeDDGRedirectURL(rawURL string) string {
 	return rawURL
 }
 
-// stripHTML removes HTML tags from text using regex.
+// stripHTML removes HTML tags from text using a pre-compiled regex.
 func stripHTML(text string) string {
-	tagRegex := regexp.MustCompile(`<[^>]+>`)
-	return tagRegex.ReplaceAllString(text, "")
+	return htmlTagRegex.ReplaceAllString(text, "")
 }
 
 // htmlUnescape unescapes basic HTML entities.
