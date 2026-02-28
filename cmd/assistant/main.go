@@ -293,8 +293,8 @@ func ttsProcessor(ctx context.Context, synthesizer *tts.Synthesizer, player *aud
 				}
 			}
 
-			// Stream synthesis and playback concurrently for lower latency
-			// This allows playback of sentence N while synthesizing sentence N+1
+			// Pipeline synthesis and playback concurrently for lower latency.
+			// Synthesis of sentence N+1 overlaps with playback of sentence N.
 			sentences := tts.SplitSentences(text)
 			if len(sentences) == 0 {
 				log.Println("⚠️  No sentences to synthesize")
@@ -307,50 +307,74 @@ func ttsProcessor(ctx context.Context, synthesizer *tts.Synthesizer, player *aud
 
 			wasInterrupted := false
 
-			// Process each sentence: synthesize and play immediately
-			for i, sentence := range sentences {
-				if sentence == "" {
-					continue
+			// Pipeline: a goroutine synthesizes sentences and sends them over a
+			// buffered channel while the main loop plays them concurrently.
+			// This hides synthesis latency (100–900ms on CPU/Jetson) behind
+			// playback time, eliminating the gap between spoken sentences.
+			synthCtx, synthCancel := context.WithCancel(ctx)
+			audioQueue := make(chan *tts.AudioOutput, 1) // 1-slot buffer: prefetch next sentence
+
+			go func() {
+				defer close(audioQueue)
+				for i, sentence := range sentences {
+					if sentence == "" {
+						continue
+					}
+
+					// Stop if playback side cancelled (interruption or error)
+					select {
+					case <-synthCtx.Done():
+						return
+					default:
+					}
+
+					if cfg.InterruptMode == config.InterruptAlways && interrupt.Load() {
+						return
+					}
+
+					if cfg.Verbose {
+						log.Printf("[TTS] Synthesizing sentence %d/%d: %q", i+1, len(sentences), sentence)
+					}
+
+					chunk, err := synthesizer.Synthesize(sentence)
+					if err != nil {
+						log.Printf("❌ TTS error for sentence %d: %v", i+1, err)
+						continue
+					}
+
+					// Send to playback; abort if cancelled while waiting
+					select {
+					case audioQueue <- chunk:
+					case <-synthCtx.Done():
+						return
+					}
 				}
+			}()
 
-				// Check interruption before each sentence (in 'always' mode)
-				if cfg.InterruptMode == config.InterruptAlways && interrupt.Load() {
-					log.Println("⏸️  Synthesis interrupted by speech")
-					wasInterrupted = true
-					break
-				}
+			sentNum := 0
+			for chunk := range audioQueue {
+				sentNum++
+				log.Printf("🔊 Playing sentence %d/%d (%d samples)", sentNum, len(sentences), len(chunk.Samples))
 
-				// Synthesize this sentence
-				if cfg.Verbose {
-					log.Printf("[TTS] Synthesizing sentence %d/%d: %q", i+1, len(sentences), sentence)
-				}
-
-				chunk, err := synthesizer.Synthesize(sentence)
-				if err != nil {
-					log.Printf("❌ TTS error for sentence %d: %v", i+1, err)
-					continue // Skip failed sentence, try next
-				}
-
-				// Play immediately (don't wait for other sentences)
-				log.Printf("🔊 Playing sentence %d/%d (%d samples)", i+1, len(sentences), len(chunk.Samples))
-
-				// Play audio chunk
 				if err := player.Play(audio.AudioBuffer{
 					Samples:    chunk.Samples,
 					SampleRate: chunk.SampleRate,
 				}); err != nil {
 					log.Printf("❌ Playback error: %v", err)
+					synthCancel()
 					wasInterrupted = true
 					break
 				}
 
-				// Check if interrupted during playback (in 'always' mode)
 				if cfg.InterruptMode == config.InterruptAlways && interrupt.Load() {
 					log.Println("⏸️  Playback interrupted by speech")
+					synthCancel()
 					wasInterrupted = true
 					break
 				}
 			}
+
+			synthCancel() // No-op if already called; ensures goroutine exits
 
 			// Resume microphone after playback in 'wait' mode
 			if cfg.InterruptMode == config.InterruptWait {
