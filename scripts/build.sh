@@ -29,15 +29,15 @@ FORCE_CPU=false
 CLEAN_BUILD=false
 for arg in "$@"; do
     case $arg in
-        --cuda)
-            FORCE_CUDA=true
-            ;;
-        --cpu)
-            FORCE_CPU=true
-            ;;
-        --clean)
-            CLEAN_BUILD=true
-            ;;
+    --cuda)
+        FORCE_CUDA=true
+        ;;
+    --cpu)
+        FORCE_CPU=true
+        ;;
+    --clean)
+        CLEAN_BUILD=true
+        ;;
     esac
 done
 
@@ -74,17 +74,24 @@ verify_go_sherpa_version() {
         return 0
     fi
 
-    if [[ "$go_mod_version" != "$expected_version" ]]; then
+    # Extract major.minor versions (ignore patch)
+    local expected_major_minor
+    local go_mod_major_minor
+    expected_major_minor=$(echo "$expected_version" | grep -oE 'v[0-9]+\.[0-9]+')
+    go_mod_major_minor=$(echo "$go_mod_version" | grep -oE 'v[0-9]+\.[0-9]+')
+
+    if [[ "$go_mod_major_minor" != "$expected_major_minor" ]]; then
         echo -e "${RED}═══════════════════════════════════════════════════════════════════════════${NC}"
         echo -e "${RED}VERSION MISMATCH DETECTED!${NC}"
         echo -e "${RED}═══════════════════════════════════════════════════════════════════════════${NC}"
-        echo -e "${RED}  go.mod sherpa-onnx-go-linux:  $go_mod_version${NC}"
-        echo -e "${RED}  Build script SHERPA_VERSION:  $expected_version${NC}"
+        echo -e "${RED}  go.mod sherpa-onnx-go-linux:  $go_mod_version (major.minor: $go_mod_major_minor)${NC}"
+        echo -e "${RED}  Build script SHERPA_VERSION:  $expected_version (major.minor: $expected_major_minor)${NC}"
         echo
-        echo -e "${YELLOW}For CUDA builds, these versions MUST match to avoid ABI mismatches.${NC}"
+        echo -e "${YELLOW}For CUDA builds, major.minor versions MUST match to avoid ABI mismatches.${NC}"
+        echo -e "${YELLOW}(Patch version differences are acceptable)${NC}"
         echo
         echo -e "${GREEN}To fix this, either:${NC}"
-        echo -e "${GREEN}  1. Update go.mod to match the build script:${NC}"
+        echo -e "${GREEN}  1. Update go.mod to match the build script major.minor version:${NC}"
         echo -e "${GREEN}     go get github.com/k2-fsa/sherpa-onnx-go-linux@$expected_version${NC}"
         echo -e "${GREEN}     go get github.com/k2-fsa/sherpa-onnx-go-macos@$expected_version${NC}"
         echo
@@ -96,7 +103,7 @@ verify_go_sherpa_version() {
         exit 1
     fi
 
-    echo -e "${GREEN}Version check passed: go.mod and build script both use $go_mod_version${NC}"
+    echo -e "${GREEN}Version check passed: go.mod ($go_mod_version) and build script ($expected_version) use compatible major.minor versions${NC}"
 }
 
 echo -e "${YELLOW}Platform: ${OS} ${ARCH}${NC}"
@@ -117,7 +124,7 @@ detect_nvidia_gpu() {
 
     # Check for Jetson indicators
     for path in /dev/nvhost-gpu /dev/nvhost-ctrl-gpu /dev/nvmap /etc/nv_tegra_release \
-                /sys/devices/gpu.0 /sys/devices/17000000.ga10b /sys/devices/17000000.gv11b; do
+        /sys/devices/gpu.0 /sys/devices/17000000.ga10b /sys/devices/17000000.gv11b; do
         if [[ -e "$path" ]]; then
             return 0
         fi
@@ -178,34 +185,34 @@ get_onnxruntime_version_for_cuda() {
     local cuda_major="${cuda_ver%%.*}"
 
     case "$cuda_ver" in
-        10.2*)
-            # Jetson Nano B01
-            echo "1.11.0"
-            ;;
-        11.4*)
-            # Jetson Orin NX / JetPack 5.x
-            echo "1.16.0"
-            ;;
-        12.2*)
-            # CUDA 12.2 with cudnn8
-            echo "1.18.0"
-            ;;
-        12.6*|12.*)
-            # JetPack 6.2+ (CUDA 12.6, cudnn9)
+    10.2*)
+        # Jetson Nano B01
+        echo "1.11.0"
+        ;;
+    11.4*)
+        # Jetson Orin NX / JetPack 5.x
+        echo "1.16.0"
+        ;;
+    12.2*)
+        # CUDA 12.2 with cudnn8
+        echo "1.18.0"
+        ;;
+    12.6* | 12.*)
+        # JetPack 6.2+ (CUDA 12.6, cudnn9)
+        echo "1.18.1"
+        ;;
+    11.*)
+        # Default for CUDA 11.x - use 1.16.0
+        echo "1.16.0"
+        ;;
+    *)
+        # Default to 1.18.1 for unknown CUDA 12+ or newer
+        if [[ "$cuda_major" -ge 12 ]]; then
             echo "1.18.1"
-            ;;
-        11.*)
-            # Default for CUDA 11.x - use 1.16.0
+        else
             echo "1.16.0"
-            ;;
-        *)
-            # Default to 1.18.1 for unknown CUDA 12+ or newer
-            if [[ "$cuda_major" -ge 12 ]]; then
-                echo "1.18.1"
-            else
-                echo "1.16.0"
-            fi
-            ;;
+        fi
+        ;;
     esac
 }
 
@@ -230,25 +237,25 @@ elif [[ "$OS" == "Linux" ]] && detect_nvidia_gpu; then
 fi
 
 case "$OS" in
-    Darwin)
-        echo -e "${YELLOW}macOS detected${NC}"
-        echo -e "${GREEN}  ℹ️  Version checks skipped: macOS uses pre-built sherpa-onnx-go-macos bindings${NC}"
-        echo -e "${GREEN}     that handle version compatibility internally.${NC}"
-        ;;
-    Linux)
-        echo -e "${YELLOW}Linux detected${NC}"
-        # Check for ALSA dev libraries
-        if ! pkg-config --exists alsa 2>/dev/null; then
-            echo -e "${RED}Warning: ALSA development libraries not found.${NC}"
-            echo "Install with: sudo apt-get install libasound2-dev"
-        fi
-        ;;
-    MINGW*|MSYS*|CYGWIN*)
-        echo -e "${YELLOW}Windows detected${NC}"
-        ;;
-    *)
-        echo -e "${RED}Unknown OS: $OS${NC}"
-        ;;
+Darwin)
+    echo -e "${YELLOW}macOS detected${NC}"
+    echo -e "${GREEN}  ℹ️  Version checks skipped: macOS uses pre-built sherpa-onnx-go-macos bindings${NC}"
+    echo -e "${GREEN}     that handle version compatibility internally.${NC}"
+    ;;
+Linux)
+    echo -e "${YELLOW}Linux detected${NC}"
+    # Check for ALSA dev libraries
+    if ! pkg-config --exists alsa 2>/dev/null; then
+        echo -e "${RED}Warning: ALSA development libraries not found.${NC}"
+        echo "Install with: sudo apt-get install libasound2-dev"
+    fi
+    ;;
+MINGW* | MSYS* | CYGWIN*)
+    echo -e "${YELLOW}Windows detected${NC}"
+    ;;
+*)
+    echo -e "${RED}Unknown OS: $OS${NC}"
+    ;;
 esac
 
 echo
@@ -269,7 +276,7 @@ if [[ "$USE_CUDA" == "true" && "$OS" == "Linux" ]]; then
     # IMPORTANT: This version must match the sherpa-onnx-go-linux/macos versions in go.mod
     # The sanity check below will fail the build if they drift apart.
     # See README.md "Upgrading Dependencies" for the upgrade procedure.
-    SHERPA_VERSION="v1.12.25"
+    SHERPA_VERSION="v1.12.26"
     BUILD_MARKER="$SHERPA_INSTALL_DIR/.build-complete-${SHERPA_VERSION}"
 
     # Verify go.mod version matches before building
@@ -285,10 +292,10 @@ if [[ "$USE_CUDA" == "true" && "$OS" == "Linux" ]]; then
 
     # Check if we already have a complete CUDA build for this version
     # We use a marker file to ensure the build completed successfully
-    if [[ -f "$BUILD_MARKER" ]] && \
-       ls "$SHERPA_INSTALL_DIR/lib/"libsherpa-onnx-c-api.so* &>/dev/null && \
-       [[ -d "$SHERPA_GO_LOCAL" ]] && \
-       ls "$SHERPA_GO_LOCAL/lib/"*/libsherpa-onnx-c-api.so* &>/dev/null; then
+    if [[ -f "$BUILD_MARKER" ]] &&
+        ls "$SHERPA_INSTALL_DIR/lib/"libsherpa-onnx-c-api.so* &>/dev/null &&
+        [[ -d "$SHERPA_GO_LOCAL" ]] &&
+        ls "$SHERPA_GO_LOCAL/lib/"*/libsherpa-onnx-c-api.so* &>/dev/null; then
         echo -e "${GREEN}Using existing sherpa-onnx CUDA build (${SHERPA_VERSION})${NC}"
         echo -e "${GREEN}  Libraries: $SHERPA_INSTALL_DIR/lib${NC}"
         echo -e "${GREEN}  Go bindings: $SHERPA_GO_LOCAL${NC}"
@@ -402,7 +409,7 @@ if [[ "$USE_CUDA" == "true" && "$OS" == "Linux" ]]; then
         cp -f "$SHERPA_BUILD_DIR/sherpa-onnx/c-api/c-api.h" "$SHERPA_GO_LOCAL/"
 
         # Create go.mod for the local package
-        cat > "$SHERPA_GO_LOCAL/go.mod" << EOF
+        cat >"$SHERPA_GO_LOCAL/go.mod" <<EOF
 module github.com/k2-fsa/sherpa-onnx-go-linux
 
 go 1.25
@@ -420,7 +427,7 @@ EOF
     # Create a run wrapper script that sets up the environment (only if it doesn't exist)
     if [[ ! -f "$PROJECT_DIR/run-voice-assistant.sh" ]]; then
         echo -e "${YELLOW}Creating run wrapper script...${NC}"
-        cat > "$PROJECT_DIR/run-voice-assistant.sh" << 'WRAPPER'
+        cat >"$PROJECT_DIR/run-voice-assistant.sh" <<'WRAPPER'
 #!/bin/bash
 # Wrapper script to run voice-assistant with proper CUDA library paths
 # Automatically handles Jetson unified memory pre-loading
@@ -512,8 +519,8 @@ WRAPPER
     # Add replace directive to go.mod if not present
     if ! grep -q "replace github.com/k2-fsa/sherpa-onnx-go-linux" go.mod; then
         echo -e "${YELLOW}Adding go.mod replace directive for CUDA bindings...${NC}"
-        echo "" >> go.mod
-        echo "replace github.com/k2-fsa/sherpa-onnx-go-linux => ./.sherpa-onnx-go-local" >> go.mod
+        echo "" >>go.mod
+        echo "replace github.com/k2-fsa/sherpa-onnx-go-linux => ./.sherpa-onnx-go-local" >>go.mod
     fi
 
     echo -e "${GREEN}Using CUDA-enabled sherpa-onnx from: $SHERPA_ONNX_LIB_DIR${NC}"

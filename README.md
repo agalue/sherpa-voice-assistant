@@ -955,8 +955,8 @@ For Linux CUDA builds, three files must stay in sync:
 
 | File | What to Update | Current Value |
 |------|----------------|---------------|
-| `go.mod` | `sherpa-onnx-go-linux` and `sherpa-onnx-go-macos` versions | `v1.12.25` |
-| `scripts/build.sh` | `SHERPA_VERSION` variable | `v1.12.25` |
+| `go.mod` | `sherpa-onnx-go-linux` and `sherpa-onnx-go-macos` versions | `v1.12.x` |
+| `scripts/build.sh` | `SHERPA_VERSION` variable | `v1.12.x` |
 
 The build script includes a **sanity check** that fails with clear instructions if versions mismatch.
 
