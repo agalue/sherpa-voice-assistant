@@ -50,46 +50,46 @@ FORCE_CPU=false
 # Parse arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
-        -r|--release)
-            BUILD_MODE="release"
-            shift
-            ;;
-        -d|--debug)
-            BUILD_MODE="debug"
-            shift
-            ;;
-        -c|--clean)
-            CLEAN=true
-            shift
-            ;;
-        -t|--test)
-            RUN_TESTS=true
-            shift
-            ;;
-        --cuda)
-            FORCE_CUDA=true
-            shift
-            ;;
-        --cpu)
-            FORCE_CPU=true
-            shift
-            ;;
-        -h|--help)
-            print_usage
-            exit 0
-            ;;
-        *)
-            log_error "Unknown option: $1"
-            print_usage
-            exit 1
-            ;;
+    -r | --release)
+        BUILD_MODE="release"
+        shift
+        ;;
+    -d | --debug)
+        BUILD_MODE="debug"
+        shift
+        ;;
+    -c | --clean)
+        CLEAN=true
+        shift
+        ;;
+    -t | --test)
+        RUN_TESTS=true
+        shift
+        ;;
+    --cuda)
+        FORCE_CUDA=true
+        shift
+        ;;
+    --cpu)
+        FORCE_CPU=true
+        shift
+        ;;
+    -h | --help)
+        print_usage
+        exit 0
+        ;;
+    *)
+        log_error "Unknown option: $1"
+        print_usage
+        exit 1
+        ;;
     esac
 done
 
 cd "${PROJECT_DIR}"
 
 # Check for Rust toolchain
-if ! command -v cargo &> /dev/null; then
+if ! command -v cargo &>/dev/null; then
     log_error "Cargo (Rust) is not installed"
     log_error "Install from: https://rustup.rs"
     exit 1
@@ -117,7 +117,7 @@ detect_nvidia_gpu() {
 
     # Check for Jetson indicators
     for path in /dev/nvhost-gpu /dev/nvhost-ctrl-gpu /dev/nvmap /etc/nv_tegra_release \
-                /sys/devices/gpu.0 /sys/devices/17000000.ga10b /sys/devices/17000000.gv11b; do
+        /sys/devices/gpu.0 /sys/devices/17000000.ga10b /sys/devices/17000000.gv11b; do
         if [[ -e "$path" ]]; then
             return 0
         fi
@@ -170,34 +170,34 @@ get_onnxruntime_version_for_cuda() {
     local cuda_major="${cuda_ver%%.*}"
 
     case "$cuda_ver" in
-        10.2*)
-            # Jetson Nano B01 / JetPack 4.x
-            echo "1.11.0"
-            ;;
-        11.4*)
-            # Jetson Orin / JetPack 5.x
-            echo "1.16.0"
-            ;;
-        12.2*)
-            # CUDA 12.2 with cudnn8
-            echo "1.18.0"
-            ;;
-        12.6*|12.*)
-            # JetPack 6.2+ (CUDA 12.6, cudnn9)
+    10.2*)
+        # Jetson Nano B01 / JetPack 4.x
+        echo "1.11.0"
+        ;;
+    11.4*)
+        # Jetson Orin / JetPack 5.x
+        echo "1.16.0"
+        ;;
+    12.2*)
+        # CUDA 12.2 with cudnn8
+        echo "1.18.0"
+        ;;
+    12.6* | 12.*)
+        # JetPack 6.2+ (CUDA 12.6, cudnn9)
+        echo "1.18.1"
+        ;;
+    11.*)
+        # Default for CUDA 11.x - use 1.16.0
+        echo "1.16.0"
+        ;;
+    *)
+        # Default to 1.18.1 for unknown CUDA 12+ or newer
+        if [[ "$cuda_major" -ge 12 ]]; then
             echo "1.18.1"
-            ;;
-        11.*)
-            # Default for CUDA 11.x - use 1.16.0
+        else
             echo "1.16.0"
-            ;;
-        *)
-            # Default to 1.18.1 for unknown CUDA 12+ or newer
-            if [[ "$cuda_major" -ge 12 ]]; then
-                echo "1.18.1"
-            else
-                echo "1.16.0"
-            fi
-            ;;
+        fi
+        ;;
     esac
 }
 
@@ -218,10 +218,10 @@ get_onnxruntime_version_for_cuda() {
 get_sherpa_onnx_version_for_rs_sys() {
     local rs_sys_version="$1"
     case "$rs_sys_version" in
-        0.6.8) echo "v1.12.10" ;;
-        0.6.7) echo "v1.12.10" ;;
-        0.6.6) echo "v1.12.10" ;;
-        *) echo "" ;;
+    0.6.8) echo "v1.12.10" ;;
+    0.6.7) echo "v1.12.10" ;;
+    0.6.6) echo "v1.12.10" ;;
+    *) echo "" ;;
     esac
 }
 
@@ -492,12 +492,12 @@ fi
 
 # Check platform-specific dependencies
 case "$OS" in
-    Linux)
-        if ! pkg-config --exists alsa 2>/dev/null; then
-            log_warn "ALSA development libraries not found"
-            log_warn "Install with: sudo apt-get install libasound2-dev"
-        fi
-        ;;
+Linux)
+    if ! pkg-config --exists alsa 2>/dev/null; then
+        log_warn "ALSA development libraries not found"
+        log_warn "Install with: sudo apt-get install libasound2-dev"
+    fi
+    ;;
 esac
 
 # Clean if requested
@@ -530,7 +530,9 @@ fi
 # Enable SIMD optimizations for target CPU
 # For Jetson Orin: Enables ARM Cortex-A78AE NEON instructions
 # For x86_64: Enables AVX/AVX2/FMA instructions available on host
-if [[ "$BUILD_MODE" == "release" ]]; then
+# Note: On macOS with Homebrew Rust, setting RUSTFLAGS triggers a full rebuild
+# which can cause toolchain issues. Skip SIMD flags on macOS for now.
+if [[ "$BUILD_MODE" == "release" && "$OS" != "Darwin" ]]; then
     log_info "Enabling SIMD optimizations for target CPU architecture..."
     export RUSTFLAGS="${RUSTFLAGS:-} -C target-cpu=native"
 fi
@@ -585,7 +587,7 @@ if [[ "$OS" == "Darwin" ]]; then
 
             # Create a run wrapper that sets DYLD_LIBRARY_PATH
             RUN_SCRIPT="${PROJECT_DIR}/run-voice-assistant.sh"
-            cat > "$RUN_SCRIPT" << EOF
+            cat >"$RUN_SCRIPT" <<EOF
 #!/bin/bash
 # Wrapper script to run voice-assistant with proper library paths on macOS
 
@@ -636,7 +638,7 @@ elif [[ "$USE_CUDA" == "true" && "$OS" == "Linux" ]]; then
     fi
 
     RUN_SCRIPT="${PROJECT_DIR}/run-voice-assistant.sh"
-    cat > "$RUN_SCRIPT" << 'EOF'
+    cat >"$RUN_SCRIPT" <<'EOF'
 #!/bin/bash
 # Wrapper script to run voice-assistant with proper CUDA library paths
 # Automatically handles Jetson unified memory pre-loading
@@ -717,11 +719,11 @@ fi
 # Add the target directory to library path for sherpa-onnx shared libs
 EOF
     if [ "$BUILD_MODE" = "release" ]; then
-        echo 'export LD_LIBRARY_PATH="$SCRIPT_DIR/target/release:${LD_LIBRARY_PATH:-}"' >> "$RUN_SCRIPT"
-        echo 'exec "$SCRIPT_DIR/target/release/voice-assistant" "$@"' >> "$RUN_SCRIPT"
+        echo 'export LD_LIBRARY_PATH="$SCRIPT_DIR/target/release:${LD_LIBRARY_PATH:-}"' >>"$RUN_SCRIPT"
+        echo 'exec "$SCRIPT_DIR/target/release/voice-assistant" "$@"' >>"$RUN_SCRIPT"
     else
-        echo 'export LD_LIBRARY_PATH="$SCRIPT_DIR/target/debug:${LD_LIBRARY_PATH:-}"' >> "$RUN_SCRIPT"
-        echo 'exec "$SCRIPT_DIR/target/debug/voice-assistant" "$@"' >> "$RUN_SCRIPT"
+        echo 'export LD_LIBRARY_PATH="$SCRIPT_DIR/target/debug:${LD_LIBRARY_PATH:-}"' >>"$RUN_SCRIPT"
+        echo 'exec "$SCRIPT_DIR/target/debug/voice-assistant" "$@"' >>"$RUN_SCRIPT"
     fi
     chmod +x "$RUN_SCRIPT"
 
