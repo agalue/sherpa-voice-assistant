@@ -306,6 +306,10 @@ func ttsProcessor(ctx context.Context, synthesizer *tts.Synthesizer, player *aud
 			}
 
 			wasInterrupted := false
+			// synthExitedEarly is set by the synthesis goroutine when it exits due
+			// to an interrupt before sending any audio, so the playback loop's
+			// normal channel-close exit can still trigger the response drain.
+			var synthExitedEarly atomic.Bool
 
 			// Pipeline: a goroutine synthesizes sentences and sends them over a
 			// buffered channel while the main loop plays them concurrently.
@@ -329,6 +333,7 @@ func ttsProcessor(ctx context.Context, synthesizer *tts.Synthesizer, player *aud
 					}
 
 					if cfg.InterruptMode == config.InterruptAlways && interrupt.Load() {
+						synthExitedEarly.Store(true)
 						return
 					}
 
@@ -375,6 +380,13 @@ func ttsProcessor(ctx context.Context, synthesizer *tts.Synthesizer, player *aud
 			}
 
 			synthCancel() // No-op if already called; ensures goroutine exits
+
+			// Propagate an interruption that occurred entirely inside the synthesis
+			// goroutine (before any audio reached the playback loop), so the drain
+			// below still runs when appropriate.
+			if !wasInterrupted && synthExitedEarly.Load() {
+				wasInterrupted = true
+			}
 
 			// Resume microphone after playback in 'wait' mode
 			if cfg.InterruptMode == config.InterruptWait {

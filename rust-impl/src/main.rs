@@ -225,17 +225,22 @@ fn spawn_tts_task(mut response_rx: mpsc::Receiver<String>, config: TtsTaskConfig
             // spawn_blocking is used because ONNX inference is synchronous/CPU-bound
             // and must not block the tokio async runtime.
             let (tx, mut rx) = tokio::sync::mpsc::channel::<Vec<f32>>(1); // 1-slot: prefetch next sentence
+            // Set by the synthesis task when it exits early due to an interrupt before
+            // sending any audio, so the recv loop's None exit can still trigger the drain.
+            let synth_interrupted = Arc::new(AtomicBool::new(false));
 
             let synth_task = {
                 let synthesizer = Arc::clone(&synthesizer);
                 let shutdown = Arc::clone(&shutdown);
                 let user_speaking = Arc::clone(&user_speaking);
+                let synth_interrupted_flag = Arc::clone(&synth_interrupted);
                 tokio::task::spawn_blocking(move || {
-                    for sentence in sentences {
+                    for (i, sentence) in sentences.iter().enumerate() {
                         if sentence.trim().is_empty() {
                             continue;
                         }
                         if interrupt_mode == InterruptMode::Always && user_speaking.load(Ordering::Relaxed) {
+                            synth_interrupted_flag.store(true, Ordering::Relaxed);
                             break;
                         }
                         if shutdown.load(Ordering::Relaxed) {
@@ -243,10 +248,10 @@ fn spawn_tts_task(mut response_rx: mpsc::Receiver<String>, config: TtsTaskConfig
                         }
                         let samples = {
                             let mut synth = synthesizer.lock();
-                            match synth.synthesize_sentence(&sentence) {
+                            match synth.synthesize_sentence(sentence) {
                                 Ok(s) => s,
                                 Err(e) => {
-                                    error!("❌ TTS error: {}", e);
+                                    error!("❌ TTS error for sentence {}/{}: {}", i + 1, total_sentences, e);
                                     continue;
                                 }
                             }
@@ -290,6 +295,12 @@ fn spawn_tts_task(mut response_rx: mpsc::Receiver<String>, config: TtsTaskConfig
                     was_interrupted = true;
                     break;
                 }
+            }
+
+            // Propagate an interruption that occurred entirely inside the synthesis task
+            // (before any audio reached this loop), so the drain below still runs.
+            if !was_interrupted && synth_interrupted.load(Ordering::Relaxed) {
+                was_interrupted = true;
             }
 
             // Drop receiver to unblock the synthesis task if it is still running
