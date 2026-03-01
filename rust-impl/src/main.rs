@@ -312,7 +312,8 @@ fn spawn_tts_task(mut response_rx: mpsc::Receiver<String>, config: TtsTaskConfig
             // Drop receiver to unblock the synthesis task if it is still running
             drop(rx);
             if was_interrupted && interrupt_mode == InterruptMode::Always {
-                // Abort synthesis to avoid waiting up to full synthesis latency after interruption
+                // Abort the join handle so we don't wait for the full synthesis latency
+                // Note: this does not forcibly preempt CPU-bound synthesis already in progress.
                 synth_task.abort();
             } else {
                 let _ = synth_task.await;
