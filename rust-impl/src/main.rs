@@ -202,8 +202,8 @@ fn spawn_tts_task(mut response_rx: mpsc::Receiver<String>, config: TtsTaskConfig
                 debug!("Microphone paused for playback");
             }
 
-            // Stream synthesis and playback: synthesize and play each sentence immediately
-            // This reduces latency compared to synthesizing all sentences before playing
+            // Pipeline synthesis and playback concurrently for lower latency.
+            // Synthesis of sentence N+1 overlaps with playback of sentence N.
             let sentences = tts::split_sentences(&response);
             if sentences.is_empty() {
                 warn!("No sentences to synthesize");
@@ -217,10 +217,61 @@ fn spawn_tts_task(mut response_rx: mpsc::Receiver<String>, config: TtsTaskConfig
             let mut was_interrupted = false;
             let total_sentences = sentences.len();
 
-            for (i, sentence) in sentences.into_iter().enumerate() {
-                if sentence.trim().is_empty() {
+            // Pipeline: a blocking task synthesizes sentences over a buffered channel
+            // while the async loop plays them concurrently, hiding synthesis latency
+            // (100–900ms on CPU/Jetson) behind playback time and eliminating the gap
+            // between spoken sentences.
+            //
+            // spawn_blocking is used because ONNX inference is synchronous/CPU-bound
+            // and must not block the tokio async runtime.
+            let (tx, mut rx) = tokio::sync::mpsc::channel::<Vec<f32>>(1); // 1-slot: prefetch next sentence
+            // Set by the synthesis task when it exits early due to an interrupt before
+            // sending any audio, so the recv loop's None exit can still trigger the drain.
+            let synth_interrupted = Arc::new(AtomicBool::new(false));
+
+            let synth_task = {
+                let synthesizer = Arc::clone(&synthesizer);
+                let shutdown = Arc::clone(&shutdown);
+                let user_speaking = Arc::clone(&user_speaking);
+                let synth_interrupted_flag = Arc::clone(&synth_interrupted);
+                tokio::task::spawn_blocking(move || {
+                    for (i, sentence) in sentences.iter().enumerate() {
+                        if sentence.trim().is_empty() {
+                            continue;
+                        }
+                        if interrupt_mode == InterruptMode::Always && user_speaking.load(Ordering::Relaxed) {
+                            synth_interrupted_flag.store(true, Ordering::Relaxed);
+                            break;
+                        }
+                        if shutdown.load(Ordering::Relaxed) {
+                            break;
+                        }
+                        let samples = {
+                            let mut synth = synthesizer.lock();
+                            match synth.synthesize_sentence(sentence) {
+                                Ok(s) => s,
+                                Err(e) => {
+                                    error!("❌ TTS error for sentence {}/{}: {}", i + 1, total_sentences, e);
+                                    continue;
+                                }
+                            }
+                        };
+                        // blocking_send returns Err when receiver is dropped (interrupted)
+                        if tx.blocking_send(samples).is_err() {
+                            break;
+                        }
+                    }
+                })
+            };
+
+            // Play sentences as they arrive from the synthesis task
+            let mut played = 0usize;
+            while let Some(samples) = rx.recv().await {
+                if samples.is_empty() {
                     continue;
                 }
+                played += 1;
+                info!("🔊 Playing sentence {}/{} ({} samples)", played, total_sentences, samples.len());
 
                 // Check interruption before each sentence
                 if interrupt_mode == InterruptMode::Always && user_speaking.load(Ordering::Relaxed) {
@@ -230,31 +281,12 @@ fn spawn_tts_task(mut response_rx: mpsc::Receiver<String>, config: TtsTaskConfig
                     break;
                 }
 
-                // Check shutdown
+                // Respect shutdown requests during playback to avoid delaying graceful shutdown.
                 if shutdown.load(Ordering::Relaxed) {
+                    info!("🛑 Shutdown requested during playback, stopping audio");
+                    player.interrupt();
                     break;
                 }
-
-                // Synthesize this sentence
-                debug!("Synthesizing sentence {}/{}", i + 1, total_sentences);
-                let samples = {
-                    let mut synth = synthesizer.lock();
-                    match synth.synthesize_sentence(&sentence) {
-                        Ok(s) => s,
-                        Err(e) => {
-                            error!("❌ TTS error for sentence {}: {}", i + 1, e);
-                            continue; // Skip failed sentence
-                        }
-                    }
-                };
-
-                if samples.is_empty() {
-                    continue;
-                }
-
-                // Play immediately (don't wait for other sentences)
-                info!("🔊 Playing sentence {}/{} ({} samples)", i + 1, total_sentences, samples.len());
-
                 if !player.play(&samples) {
                     if interrupt_mode == InterruptMode::Always {
                         info!("⏸️  Playback interrupted");
@@ -263,13 +295,28 @@ fn spawn_tts_task(mut response_rx: mpsc::Receiver<String>, config: TtsTaskConfig
                     break;
                 }
 
-                // Check interruption after playback
                 if interrupt_mode == InterruptMode::Always && user_speaking.load(Ordering::Relaxed) {
                     info!("⏸️  Playback interrupted by speech");
                     player.interrupt();
                     was_interrupted = true;
                     break;
                 }
+            }
+
+            // Propagate an interruption that occurred entirely inside the synthesis task
+            // (before any audio reached this loop), so the drain below still runs.
+            if !was_interrupted && synth_interrupted.load(Ordering::Relaxed) {
+                was_interrupted = true;
+            }
+
+            // Drop receiver to unblock the synthesis task if it is still running
+            drop(rx);
+            if was_interrupted && interrupt_mode == InterruptMode::Always {
+                // Abort the join handle so we don't wait for the full synthesis latency
+                // Note: this does not forcibly preempt CPU-bound synthesis already in progress.
+                synth_task.abort();
+            } else {
+                let _ = synth_task.await;
             }
 
             // Resume microphone in 'wait' mode
