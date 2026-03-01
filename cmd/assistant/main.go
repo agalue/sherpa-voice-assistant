@@ -133,21 +133,21 @@ func main() {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		sttProcessor(ctx, recognizer, transcriptions, &playbackInterrupt, cfg.Verbose)
+		recognizer.RunProcessor(ctx, transcriptions, &playbackInterrupt, cfg.Verbose)
 	}()
 
 	// Start LLM processing goroutine
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		llmProcessor(ctx, llmClient, transcriptions, responses)
+		llmClient.RunProcessor(ctx, transcriptions, responses)
 	}()
 
 	// Start TTS and playback goroutine
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		ttsProcessor(ctx, synthesizer, player, responses, &playbackInterrupt, cfg, capturer)
+		synthesizer.RunProcessor(ctx, player, responses, &playbackInterrupt, cfg, capturer)
 	}()
 
 	// Start audio capture
@@ -183,251 +183,6 @@ func main() {
 		log.Println("✅ Shutdown complete")
 	case <-time.After(5 * time.Second):
 		log.Println("⚠️ Shutdown timeout, forcing exit")
-	}
-}
-
-// sttProcessor polls the recognizer for transcriptions.
-// sttProcessor receives speech segments via channel and transcribes them.
-// Event-driven approach eliminates 50-100ms polling delay.
-func sttProcessor(ctx context.Context, recognizer *stt.Recognizer, out chan<- string, interrupt *atomic.Bool, verbose bool) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case samples, ok := <-recognizer.SegmentChannel():
-			if !ok {
-				// Channel closed
-				return
-			}
-
-			// Set interrupt flag when processing new speech
-			if recognizer.IsSpeechDetected() {
-				interrupt.Store(true)
-			}
-
-			text := recognizer.TranscribeSegment(samples)
-			if text != "" {
-				if verbose {
-					log.Printf("[STT] Transcription received (%d chars)", len(text))
-				}
-
-				select {
-				case out <- text:
-					// Clear interrupt flag after sending new speech for processing
-					// This ensures the next response isn't immediately interrupted
-					interrupt.Store(false)
-					if verbose {
-						log.Println("[STT] Transcription sent to LLM processor")
-					}
-				case <-ctx.Done():
-					return
-				}
-			}
-		}
-	}
-}
-
-// llmProcessor handles LLM requests with streaming support.
-// Streams LLM responses sentence-by-sentence to reduce perceived latency
-// while maintaining natural TTS quality (complete sentences preserve prosody).
-func llmProcessor(ctx context.Context, client *llm.Client, in <-chan string, out chan<- string) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case text, ok := <-in:
-			if !ok {
-				return
-			}
-
-			log.Printf("🧠 Processing: %q", text)
-
-			// Get complete response from LLM
-			response, err := client.Chat(ctx, text)
-			if err != nil {
-				log.Printf("❌ LLM error: %v", err)
-				// Send error response for TTS
-				select {
-				case out <- "I'm sorry, I encountered an error.":
-				case <-ctx.Done():
-					return
-				}
-				continue
-			}
-
-			log.Printf("🤖 Assistant: %s", response)
-
-			// Send complete response for TTS processing
-			select {
-			case out <- response:
-			case <-ctx.Done():
-				return
-			}
-		}
-	}
-}
-
-// ttsProcessor handles TTS synthesis and playback.
-func ttsProcessor(ctx context.Context, synthesizer *tts.Synthesizer, player *audio.Player, in <-chan string, interrupt *atomic.Bool, cfg *config.Config, capturer *audio.Capturer) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case text, ok := <-in:
-			if !ok {
-				return
-			}
-
-			// In 'always' mode, check if interrupted before synthesis
-			if cfg.InterruptMode == config.InterruptAlways && interrupt.Load() {
-				discarded := drainChannel(in)
-				log.Printf("🗑️  Discarded %d queued LLM response(s) due to interruption", discarded+1)
-				continue
-			}
-
-			// In 'wait' mode, pause microphone during synthesis/playback
-			if cfg.InterruptMode == config.InterruptWait {
-				capturer.Pause()
-				if cfg.Verbose {
-					log.Println("[TTS] Microphone paused for playback")
-				}
-			}
-
-			// Pipeline synthesis and playback concurrently for lower latency.
-			// Synthesis of sentence N+1 overlaps with playback of sentence N.
-			sentences := tts.SplitSentences(text)
-			if len(sentences) == 0 {
-				log.Println("⚠️  No sentences to synthesize")
-				if cfg.InterruptMode == config.InterruptWait {
-					time.Sleep(time.Duration(cfg.PostPlaybackDelayMs) * time.Millisecond)
-					capturer.Resume()
-				}
-				continue
-			}
-
-			wasInterrupted := false
-			// synthExitedEarly is set by the synthesis goroutine when it exits due
-			// to an interrupt before sending any audio, so the playback loop's
-			// normal channel-close exit can still trigger the response drain.
-			var synthExitedEarly atomic.Bool
-
-			// Pipeline: a goroutine synthesizes sentences and sends them over a
-			// buffered channel while the main loop plays them concurrently.
-			// This hides synthesis latency (100–900ms on CPU/Jetson) behind
-			// playback time, eliminating the gap between spoken sentences.
-			synthCtx, synthCancel := context.WithCancel(ctx)
-			audioQueue := make(chan *tts.AudioOutput, 1) // 1-slot buffer: prefetch next sentence
-
-			go func() {
-				defer close(audioQueue)
-				for i, sentence := range sentences {
-					if sentence == "" {
-						continue
-					}
-
-					// Stop if playback side cancelled (interruption or error)
-					select {
-					case <-synthCtx.Done():
-						return
-					default:
-					}
-
-					if cfg.InterruptMode == config.InterruptAlways && interrupt.Load() {
-						synthExitedEarly.Store(true)
-						return
-					}
-
-					if cfg.Verbose {
-						log.Printf("[TTS] Synthesizing sentence %d/%d: %q", i+1, len(sentences), sentence)
-					}
-
-					chunk, err := synthesizer.Synthesize(sentence)
-					if err != nil {
-						log.Printf("❌ TTS error for sentence %d: %v", i+1, err)
-						continue
-					}
-
-					// Send to playback; abort if cancelled while waiting
-					select {
-					case audioQueue <- chunk:
-					case <-synthCtx.Done():
-						return
-					}
-				}
-			}()
-
-			sentNum := 0
-			for chunk := range audioQueue {
-				// Pre-play interrupt check: a chunk may have been queued before the
-				// user started speaking; avoid playing it over them.
-				if cfg.InterruptMode == config.InterruptAlways && interrupt.Load() {
-					log.Println("⏸️  Playback interrupted by speech (pre-play)")
-					synthCancel()
-					wasInterrupted = true
-					break
-				}
-
-				sentNum++
-				log.Printf("🔊 Playing sentence %d/%d (%d samples)", sentNum, len(sentences), len(chunk.Samples))
-
-				if err := player.Play(audio.AudioBuffer{
-					Samples:    chunk.Samples,
-					SampleRate: chunk.SampleRate,
-				}); err != nil {
-					log.Printf("❌ Playback error: %v", err)
-					synthCancel()
-					wasInterrupted = true
-					break
-				}
-
-				if cfg.InterruptMode == config.InterruptAlways && interrupt.Load() {
-					log.Println("⏸️  Playback interrupted by speech")
-					synthCancel()
-					wasInterrupted = true
-					break
-				}
-			}
-
-			synthCancel() // No-op if already called; ensures goroutine exits
-
-			// Propagate an interruption that occurred entirely inside the synthesis
-			// goroutine (before any audio reached the playback loop), so the drain
-			// below still runs when appropriate.
-			if !wasInterrupted && synthExitedEarly.Load() {
-				wasInterrupted = true
-			}
-
-			// Resume microphone after playback in 'wait' mode
-			if cfg.InterruptMode == config.InterruptWait {
-				// Add delay before resuming to avoid capturing playback tail
-				time.Sleep(time.Duration(cfg.PostPlaybackDelayMs) * time.Millisecond)
-				capturer.Resume()
-				if cfg.Verbose {
-					log.Println("[TTS] Microphone resumed after playback")
-				}
-			}
-
-			// If interrupted in 'always' mode, drain remaining queued responses
-			if wasInterrupted && cfg.InterruptMode == config.InterruptAlways {
-				if discarded := drainChannel(in); discarded > 0 {
-					log.Printf("🗑️  Discarded %d queued TTS response(s)", discarded)
-				}
-			}
-		}
-	}
-}
-
-// drainChannel removes all pending messages from a channel.
-// Returns the number of messages drained.
-func drainChannel[T any](ch <-chan T) int {
-	discarded := 0
-	for {
-		select {
-		case <-ch:
-			discarded++
-		default:
-			return discarded
-		}
 	}
 }
 
