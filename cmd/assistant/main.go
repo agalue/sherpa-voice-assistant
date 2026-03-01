@@ -358,6 +358,15 @@ func ttsProcessor(ctx context.Context, synthesizer *tts.Synthesizer, player *aud
 
 			sentNum := 0
 			for chunk := range audioQueue {
+				// Pre-play interrupt check: a chunk may have been queued before the
+				// user started speaking; avoid playing it over them.
+				if cfg.InterruptMode == config.InterruptAlways && interrupt.Load() {
+					log.Println("⏸️  Playback interrupted by speech (pre-play)")
+					synthCancel()
+					wasInterrupted = true
+					break
+				}
+
 				sentNum++
 				log.Printf("🔊 Playing sentence %d/%d (%d samples)", sentNum, len(sentences), len(chunk.Samples))
 
