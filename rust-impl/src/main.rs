@@ -281,6 +281,12 @@ fn spawn_tts_task(mut response_rx: mpsc::Receiver<String>, config: TtsTaskConfig
                     break;
                 }
 
+                // Respect shutdown requests during playback to avoid delaying graceful shutdown.
+                if shutdown.load(Ordering::Relaxed) {
+                    info!("🛑 Shutdown requested during playback, stopping audio");
+                    player.interrupt();
+                    break;
+                }
                 if !player.play(&samples) {
                     if interrupt_mode == InterruptMode::Always {
                         info!("⏸️  Playback interrupted");
