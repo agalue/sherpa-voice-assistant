@@ -186,7 +186,6 @@ func main() {
 	}
 }
 
-
 func init() {
 	// Configure logging
 	log.SetFlags(log.Ltime)

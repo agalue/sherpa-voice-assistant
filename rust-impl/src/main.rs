@@ -27,7 +27,6 @@ use llm::LlmClient;
 use stt::Recognizer;
 use tts::Synthesizer;
 
-
 /// Wait for shutdown signal (Ctrl+C or SIGTERM).
 async fn wait_for_shutdown(shutdown: Arc<AtomicBool>) {
     tokio::select! {

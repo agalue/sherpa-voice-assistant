@@ -52,10 +52,7 @@ pub struct TtsTaskConfig {
 ///
 /// # Returns
 /// A `JoinHandle` for the spawned async task
-pub fn spawn_tts_task(
-    mut response_rx: mpsc::Receiver<String>,
-    config: TtsTaskConfig,
-) -> JoinHandle<()> {
+pub fn spawn_tts_task(mut response_rx: mpsc::Receiver<String>, config: TtsTaskConfig) -> JoinHandle<()> {
     let TtsTaskConfig {
         synthesizer,
         player,
@@ -118,9 +115,7 @@ pub fn spawn_tts_task(
                         if sentence.trim().is_empty() {
                             continue;
                         }
-                        if interrupt_mode == InterruptMode::Always
-                            && user_speaking.load(Ordering::Relaxed)
-                        {
+                        if interrupt_mode == InterruptMode::Always && user_speaking.load(Ordering::Relaxed) {
                             synth_interrupted_flag.store(true, Ordering::Relaxed);
                             break;
                         }
@@ -132,12 +127,7 @@ pub fn spawn_tts_task(
                             match synth.synthesize_sentence(sentence) {
                                 Ok(s) => s,
                                 Err(e) => {
-                                    error!(
-                                        "\u{274c} TTS error for sentence {}/{}: {}",
-                                        i + 1,
-                                        total_sentences,
-                                        e
-                                    );
+                                    error!("\u{274c} TTS error for sentence {}/{}: {}", i + 1, total_sentences, e);
                                     continue;
                                 }
                             }
@@ -157,16 +147,9 @@ pub fn spawn_tts_task(
                     continue;
                 }
                 played += 1;
-                info!(
-                    "\u{1f50a} Playing sentence {}/{} ({} samples)",
-                    played,
-                    total_sentences,
-                    samples.len()
-                );
+                info!("\u{1f50a} Playing sentence {}/{} ({} samples)", played, total_sentences, samples.len());
 
-                if interrupt_mode == InterruptMode::Always
-                    && user_speaking.load(Ordering::Relaxed)
-                {
+                if interrupt_mode == InterruptMode::Always && user_speaking.load(Ordering::Relaxed) {
                     info!("\u{23f8}\u{fe0f}  Synthesis interrupted by speech");
                     player.interrupt();
                     was_interrupted = true;
@@ -187,9 +170,7 @@ pub fn spawn_tts_task(
                     break;
                 }
 
-                if interrupt_mode == InterruptMode::Always
-                    && user_speaking.load(Ordering::Relaxed)
-                {
+                if interrupt_mode == InterruptMode::Always && user_speaking.load(Ordering::Relaxed) {
                     info!("\u{23f8}\u{fe0f}  Playback interrupted by speech");
                     player.interrupt();
                     was_interrupted = true;

@@ -36,12 +36,7 @@ pub fn spawn_transcription_task(
     tokio::spawn(async move {
         while !shutdown.load(Ordering::Relaxed) {
             // Use a short timeout so the shutdown flag is checked regularly.
-            match tokio::time::timeout(
-                tokio::time::Duration::from_millis(100),
-                segment_rx.recv(),
-            )
-            .await
-            {
+            match tokio::time::timeout(tokio::time::Duration::from_millis(100), segment_rx.recv()).await {
                 Ok(Some(samples)) => {
                     if let Some(text) = recognizer.transcribe_segment(&samples)
                         && let Err(e) = transcript_tx.send(text).await
