@@ -488,6 +488,20 @@ elif [[ "$OS" == "Darwin" ]]; then
     log_info "macOS detected - using CoreML for acceleration"
     log_info "  ℹ️  Version checks skipped: macOS uses pre-built static sherpa-rs bindings"
     log_info "     that handle version compatibility internally."
+
+    # cmake is required to compile sherpa-onnx from source on macOS
+    if ! command -v cmake &>/dev/null; then
+        log_warn "cmake is not installed (required to build sherpa-onnx)"
+        if command -v brew &>/dev/null; then
+            log_info "Installing cmake via Homebrew..."
+            brew install cmake
+        else
+            log_error "Homebrew is not installed. Please install cmake before building:"
+            log_error "  Option 1: Install Homebrew (https://brew.sh) and re-run this script"
+            log_error "  Option 2: Install cmake directly from https://cmake.org/download/"
+            exit 1
+        fi
+    fi
 fi
 
 # Check platform-specific dependencies

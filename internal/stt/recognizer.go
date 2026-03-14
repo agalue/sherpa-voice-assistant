@@ -9,7 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/agalue/voice-assistant/internal/sherpa"
+	"github.com/agalue/sherpa-voice-assistant/internal/sherpa"
 )
 
 // VAD configuration constants for speech detection.

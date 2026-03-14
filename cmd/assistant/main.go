@@ -17,11 +17,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/agalue/voice-assistant/internal/audio"
-	"github.com/agalue/voice-assistant/internal/config"
-	"github.com/agalue/voice-assistant/internal/llm"
-	"github.com/agalue/voice-assistant/internal/stt"
-	"github.com/agalue/voice-assistant/internal/tts"
+	"github.com/agalue/sherpa-voice-assistant/internal/audio"
+	"github.com/agalue/sherpa-voice-assistant/internal/config"
+	"github.com/agalue/sherpa-voice-assistant/internal/llm"
+	"github.com/agalue/sherpa-voice-assistant/internal/stt"
+	"github.com/agalue/sherpa-voice-assistant/internal/tts"
 )
 
 func main() {

@@ -41,6 +41,38 @@ For tested hardware platforms and minimum requirements, see the [main README](..
 - **Rust**: 1.92+ (install via [rustup](https://rustup.rs))
 - **Ollama**: For local LLM inference ([install](https://ollama.ai))
 
+### Installing Rust
+
+The recommended way to install Rust on any platform is [rustup](https://rustup.rs):
+
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+Follow the on-screen prompts (choose the default installation). Then reload your shell:
+
+**macOS alternative (Homebrew):**
+```bash
+brew install rust
+```
+
+> **Note:** Homebrew's Rust package may lag behind the latest stable release. `rustup` gives you more control over the toolchain version and is the preferred method for development.
+
+```bash
+source $HOME/.cargo/env
+```
+
+Verify the installation:
+```bash
+rustc --version   # should print rustc 1.92.0 or later
+cargo --version
+```
+
+To update an existing Rust installation:
+```bash
+rustup update stable
+```
+
 ### Linux Dependencies
 
 ```bash

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/agalue/voice-assistant/internal/sherpa"
+	"github.com/agalue/sherpa-voice-assistant/internal/sherpa"
 )
 
 // Synthesizer handles text-to-speech synthesis using Kokoro models.

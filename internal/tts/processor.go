@@ -6,8 +6,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/agalue/voice-assistant/internal/audio"
-	"github.com/agalue/voice-assistant/internal/config"
+	"github.com/agalue/sherpa-voice-assistant/internal/audio"
+	"github.com/agalue/sherpa-voice-assistant/internal/config"
 )
 
 // RunProcessor handles TTS synthesis and audio playback for incoming LLM responses.
