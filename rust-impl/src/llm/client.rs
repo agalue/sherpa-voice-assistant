@@ -69,7 +69,8 @@ impl LlmClient {
             .temperature(config.temperature as f64)
             .additional_params(json!({
                 "num_ctx": 1024,
-                "num_predict": 150
+                "num_predict": 150,
+                "think": false,
             }))
             .tool(weather_tool)
             .tool(search_tool)

@@ -1,6 +1,6 @@
-module github.com/agalue/voice-assistant
+module github.com/agalue/sherpa-voice-assistant
 
-go 1.26
+go 1.26.0
 
 require (
 	github.com/gen2brain/malgo v0.11.24
@@ -9,9 +9,9 @@ require (
 	// The build script will fail with an error if versions drift.
 	// See README.md "Upgrading Dependencies" section for the upgrade procedure.
 	// Version mapping: v1.12.x works with ONNX Runtime 1.11.0-1.18.1 (depends on CUDA version)
-	github.com/k2-fsa/sherpa-onnx-go-linux v1.12.28
-	github.com/k2-fsa/sherpa-onnx-go-macos v1.12.28
-	github.com/ollama/ollama v0.17.4
+	github.com/k2-fsa/sherpa-onnx-go-linux v1.12.29
+	github.com/k2-fsa/sherpa-onnx-go-macos v1.12.29
+	github.com/ollama/ollama v0.18.0
 )
 
 require (
@@ -20,7 +20,7 @@ require (
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/mailru/easyjson v0.9.1 // indirect
 	github.com/wk8/go-ordered-map/v2 v2.1.8 // indirect
-	golang.org/x/crypto v0.48.0 // indirect
-	golang.org/x/sys v0.41.0 // indirect
+	golang.org/x/crypto v0.49.0 // indirect
+	golang.org/x/sys v0.42.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

@@ -74,9 +74,30 @@ flowchart LR
 
 ## Prerequisites
 
-- Go 1.25 or later
+- Go 1.26 or later
 - CGO enabled (`CGO_ENABLED=1`)
 - [Ollama](https://ollama.ai/) running locally with a model loaded
+
+### Installing Go
+
+**macOS (Homebrew):**
+```bash
+brew install go
+```
+
+**macOS / Linux (official installer):**
+```bash
+# Download and install the latest Go release from https://go.dev/dl/
+# Example for Linux arm64 (adjust version and arch as needed):
+curl -OL https://go.dev/dl/go1.26.1.linux-arm64.tar.gz
+sudo tar -C /usr/local -xzf go1.26.1.linux-arm64.tar.gz
+export PATH=$PATH:/usr/local/go/bin   # add to ~/.bashrc or ~/.zshrc
+```
+
+Verify the installation:
+```bash
+go version  # should print go1.26.0 or later
+```
 
 ### Platform-Specific Requirements
 

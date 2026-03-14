@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"runtime"
 
-	"github.com/agalue/voice-assistant/internal/sherpa"
+	"github.com/agalue/sherpa-voice-assistant/internal/sherpa"
 )
 
 // Voice data is now in voices.go - simpler maps with just essential fields.
