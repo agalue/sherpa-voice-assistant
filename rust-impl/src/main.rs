@@ -29,7 +29,7 @@ use tracing_subscriber::fmt::time::LocalTime;
 use audio::{Capturer, Player};
 use config::AppConfig;
 use llm::LlmClient;
-use stt::{SileroVad, VoiceDetector};
+use stt::{ModelProvider as _, SileroModelProvider, SileroVad, VoiceDetector};
 
 /// Wait for shutdown signal (Ctrl+C or SIGTERM).
 async fn wait_for_shutdown(shutdown: Arc<AtomicBool>) {
@@ -94,6 +94,26 @@ async fn main() -> Result<()> {
     // --setup: download all required model files then exit.
     if config.setup {
         return setup::run_setup(&config);
+    }
+
+    // Verify all model files are present before starting the pipeline.
+    {
+        let silero_provider = SileroModelProvider;
+        let stt_provider = stt::new_model_provider(&config)?;
+        let tts_provider = tts::new_model_provider(&config)?;
+
+        let mut all_missing: Vec<std::path::PathBuf> = Vec::new();
+        all_missing.extend(silero_provider.verify_models(&config.model_dir));
+        all_missing.extend(stt_provider.verify_models(&config.model_dir));
+        all_missing.extend(tts_provider.verify_models(&config.model_dir));
+
+        if !all_missing.is_empty() {
+            tracing::error!("❌ Missing model files (run with --setup to download):");
+            for f in &all_missing {
+                tracing::error!("   - {}", f.display());
+            }
+            anyhow::bail!("{} model file(s) missing; run with --setup first", all_missing.len());
+        }
     }
 
     // Create and initialize components.

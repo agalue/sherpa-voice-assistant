@@ -175,11 +175,6 @@ func NewKokoroSynthesizer(cfg *KokoroConfig) (*KokoroSynthesizer, error) {
 
 	tts := sherpa.NewOfflineTts(ttsConfig)
 	if tts == nil {
-		// Check for missing model files to give an actionable error message.
-		provider := &KokoroModelProvider{}
-		if missing := provider.VerifyModels(cfg.ModelDir); len(missing) > 0 {
-			return nil, fmt.Errorf("failed to create Kokoro TTS synthesizer: missing model files %v; run with --setup to download them", missing)
-		}
 		return nil, fmt.Errorf("failed to create Kokoro TTS synthesizer (model dir: %s); verify model files are valid or re-download with --setup", kokoroDir)
 	}
 
@@ -320,8 +315,6 @@ func (p *KokoroModelProvider) EnsureModels(modelDir string, force bool) error {
 	} else {
 		url := "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kokoro-multi-lang-v1_0.tar.bz2"
 		log.Printf("[TTS] Downloading Kokoro TTS model from %s …", url)
-		// The archive contains a top-level "kokoro-multi-lang-v1_0/" directory.
-		// ExtractTarBz2Dir strips one level, so pass kokoroDir as destination.
 		if err := setup.ExtractTarBz2Dir(url, kokoroDir); err != nil {
 			return fmt.Errorf("downloading Kokoro TTS: %w", err)
 		}
@@ -333,8 +326,6 @@ func (p *KokoroModelProvider) EnsureModels(modelDir string, force bool) error {
 	if _, err := os.Stat(espeakDir); os.IsNotExist(err) {
 		url := "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/espeak-ng-data.tar.bz2"
 		log.Printf("[TTS] Downloading espeak-ng-data from %s …", url)
-		// Archive top-level is "espeak-ng-data/"; extract into kokoroDir so that
-		// the result lands at kokoroDir/espeak-ng-data/.
 		if err := setup.ExtractTarBz2Dir(url, espeakDir); err != nil {
 			return fmt.Errorf("downloading espeak-ng-data: %w", err)
 		}

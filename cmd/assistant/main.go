@@ -51,12 +51,14 @@ func main() {
 		os.Exit(0)
 	}
 
+	// Create STT model provider (used by both --setup and pre-flight verification).
+	sttProvider, err := stt.NewModelProvider(cfg)
+	if err != nil {
+		log.Fatalf("STT backend: %v", err)
+	}
+
 	// --setup: download all required model files then exit.
 	if cfg.Setup {
-		sttProvider, err := stt.NewModelProvider(cfg)
-		if err != nil {
-			log.Fatalf("STT backend: %v", err)
-		}
 		providers := []setup.ModelProvider{
 			&stt.SileroModelProvider{},
 			sttProvider,
@@ -66,6 +68,19 @@ func main() {
 			log.Fatalf("Setup failed: %v", err)
 		}
 		os.Exit(0)
+	}
+
+	// Verify all model files are present before starting the pipeline.
+	var allMissing []string
+	for _, p := range []setup.ModelProvider{&stt.SileroModelProvider{}, sttProvider, ttsProvider} {
+		allMissing = append(allMissing, p.VerifyModels(cfg.ModelDir)...)
+	}
+	if len(allMissing) > 0 {
+		log.Println("❌ Missing model files (run with --setup to download):")
+		for _, f := range allMissing {
+			log.Printf("   - %s", f)
+		}
+		log.Fatalf("%d model file(s) missing; run with --setup first", len(allMissing))
 	}
 
 	log.Println("🎤 Voice Assistant starting...")
