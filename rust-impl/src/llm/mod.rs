@@ -55,16 +55,16 @@ pub fn spawn_llm_task(
                         while transcript_rx.try_recv().is_ok() {
                             discarded += 1;
                         }
-                        info!("\u{1f5d1}\u{fe0f}  Discarded {} queued transcript(s) due to new speech", discarded);
+                        info!("🗑️  Discarded {} queued transcript(s) due to new speech", discarded);
                         continue;
                     }
 
-                    info!("\u{1f9e0} Processing: \"{}\"", transcript);
+                    info!("🧠 Processing: \"{}\"", transcript);
 
                     // Interrupt any audio currently playing.
                     player.interrupt();
 
-                    info!("\u{1f914} Analyzing request (may use tools)...");
+                    info!("🤔 Analyzing request (may use tools)...");
 
                     // RIG handles the agentic tool-call loop transparently.
                     let result = {
@@ -74,13 +74,13 @@ pub fn spawn_llm_task(
 
                     match result {
                         Ok(response) => {
-                            info!("\u{1f916} Assistant: {}", response);
+                            info!("🤖 Assistant: {}", response);
                             if let Err(e) = response_tx.send(response).await {
                                 debug!("Failed to send response: {}", e);
                             }
                         }
                         Err(e) => {
-                            error!("\u{274c} LLM error: {}", e);
+                            error!("❌ LLM error: {}", e);
                             if response_tx
                                 .send("I'm sorry, I encountered an error.".to_string())
                                 .await

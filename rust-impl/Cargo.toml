@@ -17,8 +17,10 @@ rubato = "1"  # High-quality audio resampling
 audioadapter-buffers = "2"  # Buffer adapters for rubato
 
 # LLM interaction
-rig-core = { version = "0.32", default-features = false, features = ["reqwest-rustls"] }
-reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"] }
+rig-core = { version = "0.33", default-features = false, features = ["reqwest-rustls"] }
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls", "blocking"] }
+bzip2 = "0.4"
+tar = "0.4"
 urlencoding = "2"
 regex = "1"
 

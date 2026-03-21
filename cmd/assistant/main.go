@@ -2,9 +2,12 @@
 //
 // This program implements a real-time voice assistant with:
 // - Voice Activity Detection (Silero-VAD)
-// - Speech-to-Text (Whisper)
+// - Speech-to-Text (configurable via --stt-backend; default: Whisper)
 // - LLM Integration (Ollama)
-// - Text-to-Speech (Kokoro)
+// - Text-to-Speech (configurable via --tts-backend; default: Kokoro)
+//
+// Run with --setup to download required model files.
+// Run with --setup --force to re-download all models.
 package main
 
 import (
@@ -20,6 +23,7 @@ import (
 	"github.com/agalue/sherpa-voice-assistant/internal/audio"
 	"github.com/agalue/sherpa-voice-assistant/internal/config"
 	"github.com/agalue/sherpa-voice-assistant/internal/llm"
+	"github.com/agalue/sherpa-voice-assistant/internal/setup"
 	"github.com/agalue/sherpa-voice-assistant/internal/stt"
 	"github.com/agalue/sherpa-voice-assistant/internal/tts"
 )
@@ -29,6 +33,54 @@ func main() {
 	cfg, err := config.ParseFlags()
 	if err != nil {
 		log.Fatalf("Configuration error: %v", err)
+	}
+
+	// Handle informational flags first (no model loading required).
+	ttsProvider, err := tts.NewModelProvider(cfg)
+	if err != nil {
+		log.Fatalf("%v", err)
+	}
+	if cfg.ListVoices {
+		ttsProvider.PrintVoices()
+		os.Exit(0)
+	}
+	if cfg.VoiceInfo != "" {
+		if err := ttsProvider.PrintVoiceInfo(cfg.VoiceInfo); err != nil {
+			log.Fatalf("%v", err)
+		}
+		os.Exit(0)
+	}
+
+	// Create STT model provider (used by both --setup and pre-flight verification).
+	sttProvider, err := stt.NewModelProvider(cfg)
+	if err != nil {
+		log.Fatalf("STT backend: %v", err)
+	}
+
+	// --setup: download all required model files then exit.
+	if cfg.Setup {
+		providers := []setup.ModelProvider{
+			&stt.SileroModelProvider{},
+			sttProvider,
+			ttsProvider,
+		}
+		if err := setup.Run(cfg.ModelDir, cfg.Force, providers); err != nil {
+			log.Fatalf("Setup failed: %v", err)
+		}
+		os.Exit(0)
+	}
+
+	// Verify all model files are present before starting the pipeline.
+	var allMissing []string
+	for _, p := range []setup.ModelProvider{&stt.SileroModelProvider{}, sttProvider, ttsProvider} {
+		allMissing = append(allMissing, p.VerifyModels(cfg.ModelDir)...)
+	}
+	if len(allMissing) > 0 {
+		log.Println("❌ Missing model files (run with --setup to download):")
+		for _, f := range allMissing {
+			log.Printf("   - %s", f)
+		}
+		log.Fatalf("%d model file(s) missing; run with --setup first", len(allMissing))
 	}
 
 	log.Println("🎤 Voice Assistant starting...")
@@ -59,48 +111,43 @@ func main() {
 	}
 	log.Printf("✅ Ollama connected (model: %s)", cfg.OllamaModel)
 
-	// Create STT recognizer
+	// Create Silero VAD (voice activity detection)
 	log.Println("🧠 Loading speech recognition models...")
-	recognizer, err := stt.NewRecognizer(&stt.Config{
-		VADModel:           cfg.VADModel,
-		VADThreshold:       cfg.VadThreshold,
-		VADSilenceDuration: cfg.VADSilenceDuration,
-		WhisperEncoder:     cfg.WhisperEncoder,
-		WhisperDecoder:     cfg.WhisperDecoder,
-		WhisperTokens:      cfg.WhisperTokens,
-		SampleRate:         cfg.SampleRate,
-		WakeWord:           cfg.WakeWord,
-		Provider:           cfg.STTProvider,
-		Language:           cfg.STTLanguage,
-		Verbose:            cfg.Verbose,
-		VADThreads:         cfg.VADThreads,
-		STTThreads:         cfg.STTThreads,
+	vad, err := stt.NewSileroVAD(&stt.SileroConfig{
+		ModelDir:        cfg.ModelDir,
+		Threshold:       cfg.VadThreshold,
+		SilenceDuration: cfg.VADSilenceDuration,
+		SampleRate:      cfg.SampleRate,
+		NumThreads:      cfg.VADThreads,
+		Verbose:         cfg.Verbose,
 	})
 	if err != nil {
-		log.Fatalf("Failed to create STT recognizer: %v", err)
+		log.Fatalf("Failed to create VAD: %v", err)
+	}
+	defer vad.Close()
+
+	// Create Whisper transcriber (speech-to-text)
+	recognizer, err := stt.NewTranscriber(cfg)
+	if err != nil {
+		log.Fatalf("Failed to create STT transcriber: %v", err)
 	}
 	defer recognizer.Close()
+
+	// Expose via interfaces so the rest of the pipeline is implementation-agnostic.
+	var detector stt.VoiceDetector = vad
+	var transcriber stt.Transcriber = recognizer
 	log.Println("✅ Speech recognition ready")
 
-	// Create TTS synthesizer
+	// Create TTS synthesizer (implements tts.Synthesizer)
 	log.Println("🔊 Loading text-to-speech models...")
-	synthesizer, err := tts.NewSynthesizer(&tts.Config{
-		Model:      cfg.TTSModel,
-		Voices:     cfg.TTSVoices,
-		Tokens:     cfg.TTSTokens,
-		DataDir:    cfg.TTSData,
-		Lexicon:    cfg.TTSLexicon,
-		Language:   cfg.TTSLanguage, // Required for multi-lingual Kokoro v1.0+
-		SpeakerID:  cfg.TTSSpeakerID,
-		Speed:      cfg.TTSSpeed,
-		Provider:   cfg.TTSProvider, // CoreML on macOS, CUDA on Linux
-		Verbose:    cfg.Verbose,
-		TTSThreads: cfg.TTSThreads,
-	})
+	synth, err := tts.NewSynthesizer(cfg)
 	if err != nil {
 		log.Fatalf("Failed to create TTS synthesizer: %v", err)
 	}
-	defer synthesizer.Close()
+	defer synth.Close()
+
+	// Expose via interface so the pipeline is implementation-agnostic.
+	var synthesizer tts.Synthesizer = synth
 	log.Println("✅ Text-to-speech ready")
 
 	// Create interrupt flag for playback
@@ -119,7 +166,7 @@ func main() {
 
 	// Create audio capturer
 	capturer, err := audio.NewCapturer(cfg.SampleRate, func(samples []float32) {
-		recognizer.AcceptWaveform(samples)
+		detector.AcceptWaveform(samples)
 	})
 	if err != nil {
 		log.Fatalf("Failed to create audio capturer: %v", err)
@@ -129,11 +176,11 @@ func main() {
 	// WaitGroup for goroutines
 	var wg sync.WaitGroup
 
-	// Start STT processing goroutine
+	// Start STT processing goroutine (interface-based, model-agnostic)
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		recognizer.RunProcessor(ctx, transcriptions, &playbackInterrupt, cfg.Verbose)
+		stt.RunProcessor(ctx, detector, transcriber, transcriptions, &playbackInterrupt, cfg.Verbose)
 	}()
 
 	// Start LLM processing goroutine
@@ -143,11 +190,11 @@ func main() {
 		llmClient.RunProcessor(ctx, transcriptions, responses)
 	}()
 
-	// Start TTS and playback goroutine
+	// Start TTS and playback goroutine (interface-based, model-agnostic)
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		synthesizer.RunProcessor(ctx, player, responses, &playbackInterrupt, cfg, capturer)
+		tts.RunProcessor(ctx, synthesizer, player, responses, &playbackInterrupt, cfg, capturer)
 	}()
 
 	// Start audio capture

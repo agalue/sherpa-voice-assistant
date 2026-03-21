@@ -9,8 +9,8 @@ For the LLM processing, I'm relying on [Ollama](https://ollama.com/), as it work
 ## Features
 
 - **Voice Activity Detection (VAD)**: Silero-VAD for accurate speech boundary detection
-- **Speech-to-Text (STT)**: Whisper multilingual model for high-quality transcription (99 languages)
-- **Text-to-Speech (TTS)**: Kokoro for natural-sounding voice synthesis with emotional expression
+- **Speech-to-Text (STT)**: Pluggable backend (`--stt-backend`); ships with Whisper multilingual model for high-quality transcription (99 languages)
+- **Text-to-Speech (TTS)**: Pluggable backend (`--tts-backend`); ships with Kokoro for natural-sounding voice synthesis with emotional expression
 - **LLM Integration**: Ollama API for conversational AI with agentic tool calling
 - **Agentic Tools**: Weather information and web search capabilities
 - **Low Latency**: Optimized for real-time conversation
@@ -36,7 +36,7 @@ This implementation supports multiple platforms with hardware acceleration:
 
 Providers are **auto-detected** at runtime based on your platform. Kokoro TTS supports full CoreML acceleration on macOS and CUDA on Linux.
 
-You can override providers with `--provider` (for STT) and `--tts-provider` flags.
+You can override providers with `--provider` (global), `--stt-provider`, and `--tts-provider` flags.
 
 ## Tested Hardware
 
@@ -61,9 +61,9 @@ This solution has been designed and tested on the following platforms:
 ```mermaid
 flowchart LR
     subgraph Pipeline
-        A[🎤 Audio Capture<br/>malgo] --> B[🗣️ VAD + STT<br/>Whisper]
+        A[🎤 Audio Capture<br/>malgo] --> B[🗣️ VAD + STT<br/>--stt-backend]
         B --> C[🧠 LLM<br/>Ollama]
-        C --> D[📢 TTS<br/>Kokoro]
+        C --> D[📢 TTS<br/>--tts-backend]
         D --> E[🔊 Playback<br/>malgo]
         C -.->|Tool Calls| F[🔧 Tools<br/>Weather & Search]
         F -.->|Results| C
@@ -125,54 +125,38 @@ nvcc --version  # Should show CUDA version
 
 ### 1. Download Models
 
-Run the setup script to download required models (default: ~900MB total):
+Build the application first (see step 2), then run the built-in setup command to download required models (default: ~900MB total):
 
 ```bash
-chmod +x scripts/setup.sh
-./scripts/setup.sh
+./voice-assistant --setup
 ```
 
 This downloads:
 - **Silero-VAD**: Voice activity detection model
-- **Whisper tiny + small**: Multilingual speech recognition models (int8 quantized, 99 languages)
+- **Whisper tiny**: Multilingual speech recognition model (int8 quantized, 99 languages)
 - **Kokoro v1.0**: Multilingual text-to-speech model with natural voices
 
-**Note**: By default, both `tiny` (default runtime model) and `small` (for better accuracy) are downloaded (~721MB total).
+**Setup Options:**
+```bash
+# Force re-download even if files exist
+./voice-assistant --setup --force
 
-**Choosing Whisper Model Size:**
+# Custom model directory
+./voice-assistant --setup --model-dir /custom/path
+
+# Combine with a different Whisper model size
+./voice-assistant --setup --stt-model small
+```
+
+The setup command is **idempotent** — it won't re-download existing files unless `--force` is used.
+
+**Choosing STT Model:**
 
 | Model | Memory | Download | WER | Speed | Best For |
 |-------|--------|----------|-----|-------|----------|
 | `tiny` | ~390MB | 111MB | ~5.0% | 32x realtime | **Jetson, edge devices** |
 | `base` | ~740MB | 198MB | ~3.4% | 16x realtime | Balanced accuracy/speed |
 | `small` | ~2.4GB | 610MB | ~2.2% | 6x realtime | **Desktop, best accuracy** |
-
-Download specific models:
-
-```bash
-# Download tiny model only (recommended for Jetson)
-WHISPER_MODELS='tiny' ./scripts/setup.sh
-
-# Download multiple models
-WHISPER_MODELS='tiny small' ./scripts/setup.sh
-
-# Download all models
-WHISPER_MODELS='tiny base small' ./scripts/setup.sh
-```
-
-**Setup Script Options:**
-```bash
-# Custom installation directory
-./scripts/setup.sh --assets-dir /custom/path
-
-# Force re-download even if files exist
-./scripts/setup.sh --force
-
-# Combine options
-WHISPER_MODELS='tiny' ./scripts/setup.sh --assets-dir /custom/path --force
-```
-
-The setup script is **idempotent** - it won't re-download existing files unless `--force` is used.
 
 ### 2. Build the Application
 
@@ -262,19 +246,34 @@ The wrapper script automatically:
 
 **Jetson Orin Nano Super users**: See [JETSON_OPTIMIZATION.md](JETSON_OPTIMIZATION.md) for memory optimization details.
 
-### Selecting Whisper Model Size
+### Selecting STT / TTS Backend
 
-**Use the `-whisper-model` flag to choose STT model size:**
+The assistant supports **pluggable STT and TTS backends** via `--stt-backend` and `--tts-backend`. Each backend interprets `--stt-model` and `--tts-voice` in its own way.
 
 ```bash
-# Use tiny model (default, recommended for most devices)
-./voice-assistant -whisper-model tiny
+# Defaults (equivalent to not passing the flags)
+./voice-assistant --stt-backend whisper --tts-backend kokoro
+```
 
-# Use base model (better accuracy, more memory)
-./voice-assistant -whisper-model base
+Currently available backends:
+- **STT**: `whisper` (default)
+- **TTS**: `kokoro` (default)
 
-# Use small model (best accuracy, requires more memory)
-./voice-assistant -whisper-model small
+To add a new backend, implement the `Transcriber`/`Synthesizer` interface and register it in the factory (see `internal/stt/stt.go` and `internal/tts/tts.go`).
+
+### Selecting STT Model
+
+**Use the `--stt-model` flag to choose the STT model:**
+
+```bash
+# Use Whisper tiny model (default, recommended for most devices)
+./voice-assistant --stt-model tiny
+
+# Use Whisper base model (better accuracy, more memory)
+./voice-assistant --stt-model base
+
+# Use Whisper small model (best accuracy, requires more memory)
+./voice-assistant --stt-model small
 ```
 
 **Model Comparison:**
@@ -813,7 +812,7 @@ To see all 53 available Kokoro voices with their speaker IDs, quality grades, an
 voice-assistant/
 ├── cmd/
 │   └── assistant/
-│       └── main.go           # Main entry point and pipeline orchestration
+│       └── main.go           # Main entry point, pipeline orchestration
 ├── internal/
 │   ├── audio/
 │   │   ├── capture.go        # Microphone audio capture (malgo)
@@ -822,15 +821,23 @@ voice-assistant/
 │   │   └── config.go         # CLI flags and configuration
 │   ├── llm/
 │   │   └── client.go         # Ollama API client
+│   ├── setup/
+│   │   ├── download.go       # HTTP download and tar.bz2 extraction helpers
+│   │   └── setup.go          # --setup orchestration (model download & verification)
 │   ├── sherpa/
 │   │   ├── sherpa_darwin.go  # macOS-specific sherpa-onnx bindings (CoreML)
 │   │   └── sherpa_linux.go   # Linux-specific sherpa-onnx bindings (CUDA)
 │   ├── stt/
-│   │   └── recognizer.go     # VAD + Whisper speech recognition
+│   │   ├── stt.go            # VoiceDetector, Transcriber interfaces + factory
+│   │   ├── silero.go         # Silero VAD implementation
+│   │   ├── whisper.go        # Whisper transcription implementation
+│   │   └── processor.go      # STT processing goroutine
 │   └── tts/
-│       └── synthesizer.go    # Kokoro text-to-speech
+│       ├── tts.go            # Synthesizer interface + factory
+│       ├── kokoro.go         # Kokoro TTS implementation
+│       ├── text.go           # Sentence splitting utilities
+│       └── processor.go      # TTS playback pipeline goroutine
 ├── scripts/
-│   ├── setup.sh              # Model download script
 │   └── build.sh              # Build script with CUDA support
 ├── go.mod
 └── README.md
@@ -846,12 +853,12 @@ voice-assistant/
 
 ### Alternative Models
 
-You can use different models by modifying the setup script or providing custom paths:
+You can select a different STT model with `--stt-model`:
 
 **STT alternatives:**
-- `whisper-tiny.en` - Faster, less accurate
-- `whisper-base.en` - Balance of speed/accuracy
-- `whisper-medium.en` - Higher accuracy, slower
+- `tiny` - Fastest, ~5% WER (default)
+- `base` - Balance of speed/accuracy
+- `small` - Higher accuracy, slower
 
 **TTS voices (Kokoro built-in):**
 - `af_bella` (speaker ID 2) - American female, high quality (default)
@@ -1058,8 +1065,9 @@ The wrapper script automatically sets `LD_LIBRARY_PATH` to find libraries in `~/
 ## Troubleshooting
 
 ### "Failed to create VAD" or "Failed to create offline recognizer"
-- Ensure models are downloaded: `./scripts/setup.sh`
-- Check model paths match configuration
+- Run initial setup to download required models: `./voice-assistant --setup` (use `--force` to re-download if needed)
+- Ensure the model directory exists and is writable (default: `~/.voice-assistant/models/`, or as set via `--model-dir`)
+- Check that model paths and any `--model-dir` override match your configuration
 - Verify sherpa-onnx is properly installed
 
 ### "Cannot reach Ollama"

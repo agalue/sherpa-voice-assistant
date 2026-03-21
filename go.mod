@@ -9,16 +9,16 @@ require (
 	// The build script will fail with an error if versions drift.
 	// See README.md "Upgrading Dependencies" section for the upgrade procedure.
 	// Version mapping: v1.12.x works with ONNX Runtime 1.11.0-1.18.1 (depends on CUDA version)
-	github.com/k2-fsa/sherpa-onnx-go-linux v1.12.29
-	github.com/k2-fsa/sherpa-onnx-go-macos v1.12.29
-	github.com/ollama/ollama v0.18.0
+	github.com/k2-fsa/sherpa-onnx-go-linux v1.12.31
+	github.com/k2-fsa/sherpa-onnx-go-macos v1.12.31
+	github.com/ollama/ollama v0.18.2
 )
 
 require (
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
-	github.com/buger/jsonparser v1.1.1 // indirect
+	github.com/buger/jsonparser v1.1.2 // indirect
 	github.com/google/uuid v1.6.0 // indirect
-	github.com/mailru/easyjson v0.9.1 // indirect
+	github.com/mailru/easyjson v0.9.2 // indirect
 	github.com/wk8/go-ordered-map/v2 v2.1.8 // indirect
 	golang.org/x/crypto v0.49.0 // indirect
 	golang.org/x/sys v0.42.0 // indirect
