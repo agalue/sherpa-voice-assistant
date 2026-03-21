@@ -15,7 +15,15 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
+
+// httpClient is the shared HTTP client used for all model downloads.
+// A 30-minute overall timeout is generous enough for large model files while
+// still preventing indefinite blocking on network stalls.
+var httpClient = &http.Client{
+	Timeout: 30 * time.Minute,
+}
 
 // FileExists reports whether a regular file exists at path.
 func FileExists(path string) bool {
@@ -43,7 +51,7 @@ func DownloadFile(url, dest string, force bool) error {
 	defer func() { _ = os.Remove(tmpName) }() // clean up on failure
 
 	log.Printf("[download] Downloading %s …", filepath.Base(dest))
-	resp, err := http.Get(url) //nolint:gosec // URL is constructed from hardcoded base + model name
+	resp, err := httpClient.Get(url) //nolint:gosec // URL is constructed from hardcoded base + model name
 	if err != nil {
 		tmp.Close()
 		return fmt.Errorf("GET %s: %w", url, err)
@@ -70,7 +78,7 @@ func DownloadFile(url, dest string, force bool) error {
 // entries whose tar path is a key in wantFiles; the value maps to the destination
 // file path on disk.
 func ExtractTarBz2Selected(url string, wantFiles map[string]string) error {
-	resp, err := http.Get(url) //nolint:gosec
+	resp, err := httpClient.Get(url) //nolint:gosec
 	if err != nil {
 		return fmt.Errorf("GET %s: %w", url, err)
 	}
@@ -141,7 +149,7 @@ func ExtractTarBz2Dir(url, destDir string) error {
 		return err
 	}
 
-	resp, err := http.Get(url) //nolint:gosec
+	resp, err := httpClient.Get(url) //nolint:gosec
 	if err != nil {
 		return fmt.Errorf("GET %s: %w", url, err)
 	}
@@ -168,9 +176,15 @@ func ExtractTarBz2Dir(url, destDir string) error {
 		if len(parts) < 2 || parts[1] == "" {
 			continue // top-level directory entry itself
 		}
-		rel := parts[1]
 
-		dest := filepath.Join(destDir, filepath.FromSlash(rel))
+		rel := filepath.Clean(filepath.FromSlash(parts[1]))
+		// Prevent path traversal: reject absolute paths and any path resolving outside destDir.
+		if filepath.IsAbs(rel) || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+			log.Printf("skipping suspicious path in tar archive: %q", hdr.Name)
+			continue
+		}
+
+		dest := filepath.Join(destDir, rel)
 
 		switch hdr.Typeflag {
 		case tar.TypeDir:

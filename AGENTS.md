@@ -80,4 +80,3 @@ cd rust-impl && cargo clippy --release # Must have zero warnings
 5. **Maintain Go/Rust parity** - identical behavior, language-specific optimizations
 6. **Document thoroughly** - prioritize clarity in `cargo doc` and `go doc` output
 7. **Keep READMEs current** - update project structure, architecture diagrams, and feature descriptions in both `README.md` files whenever file/module/package structure or architecture changes
-6. **Document thoroughly** - prioritize clarity in `cargo doc` and `go doc` output
