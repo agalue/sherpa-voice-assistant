@@ -1065,7 +1065,7 @@ The wrapper script automatically sets `LD_LIBRARY_PATH` to find libraries in `~/
 ## Troubleshooting
 
 ### "Failed to create VAD" or "Failed to create offline recognizer"
-- Ensure models are downloaded: `./scripts/setup.sh`
+- Models are downloaded automatically on first run; ensure `~/.voice-assistant/models/` exists and is writable
 - Check model paths match configuration
 - Verify sherpa-onnx is properly installed
 
