@@ -34,17 +34,21 @@ impl WhisperRecognizer {
     /// Returns an error if the model files are missing or Whisper fails to initialise.
     pub fn new(config: &AppConfig) -> Result<Self> {
         let provider = config.effective_stt_provider();
-        let encoder_path = config.whisper_encoder_path().to_string_lossy().to_string();
-        let decoder_path = config.whisper_decoder_path().to_string_lossy().to_string();
-        let tokens_path = config.whisper_tokens_path().to_string_lossy().to_string();
 
-        info!("Initializing Whisper recognizer ({} provider)", provider);
-        info!("Encoder: {}", encoder_path);
-        info!("Decoder: {}", decoder_path);
-        info!("Tokens:  {}", tokens_path);
+        // Derive Whisper model paths from model_dir + stt_model.
+        // STT model is fully-qualified (e.g. "whisper-tiny"); strip the prefix.
+        let model_size = config.stt_model.strip_prefix("whisper-").unwrap_or(&config.stt_model);
+        let whisper_dir = config.model_dir.join("whisper");
+        let encoder_path = whisper_dir.join(format!("whisper-{model_size}-encoder.int8.onnx")).to_string_lossy().to_string();
+        let decoder_path = whisper_dir.join(format!("whisper-{model_size}-decoder.int8.onnx")).to_string_lossy().to_string();
+        let tokens_path = whisper_dir.join(format!("whisper-{model_size}-tokens.txt")).to_string_lossy().to_string();
 
-        let stt_language = config.effective_stt_language().to_string();
-        info!("Language: {}", if stt_language.is_empty() { "auto" } else { &stt_language });
+        // "auto" → "" triggers Whisper's built-in language detection.
+        let stt_language = if config.stt_language.eq_ignore_ascii_case("auto") {
+            String::new()
+        } else {
+            config.stt_language.clone()
+        };
 
         let whisper_config = WhisperConfig {
             encoder: encoder_path,
@@ -148,7 +152,7 @@ impl super::ModelProvider for WhisperModelProvider {
         }
 
         let url = format!("https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-whisper-{}.tar.bz2", self.model_size);
-        info!("[STT] Downloading Whisper {} from {} \u{2026}", self.model_size, url);
+        info!("[STT] Downloading Whisper {} from {} …", self.model_size, url);
 
         let want_files = vec![
             (

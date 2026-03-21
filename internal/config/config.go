@@ -1,4 +1,7 @@
 // Package config provides configuration and CLI argument parsing for the voice assistant.
+//
+// Config holds only generic pipeline parameters. Model-specific configuration
+// (paths, voices, validation) lives in the STT and TTS implementations.
 package config
 
 import (
@@ -10,9 +13,6 @@ import (
 
 	"github.com/agalue/sherpa-voice-assistant/internal/sherpa"
 )
-
-// Voice data is now in voices.go - simpler maps with just essential fields.
-// Old VoiceInfo struct and AllVoices array removed for simplicity.
 
 // InterruptMode defines how playback interruption is handled.
 type InterruptMode int
@@ -50,26 +50,20 @@ func ParseInterruptMode(s string) (InterruptMode, error) {
 
 // Config holds all configuration for the voice assistant.
 // Populated from CLI flags, environment variables, or defaults.
+//
+// Model-specific paths (Whisper encoder/decoder, Kokoro model/voices, etc.) are
+// intentionally absent — each implementation derives them from [Config.ModelDir]
+// and [Config.STTModel] internally.
 type Config struct {
-	// Model paths
-	ModelDir string // Base directory containing all model files
-	VADModel string // Path to Silero VAD model file
+	// Model directory (base for all model files)
+	ModelDir string
 
-	// Whisper STT model paths
-	WhisperModel   string // Model size (tiny, base, small, medium, large)
-	WhisperEncoder string
-	WhisperDecoder string
-	WhisperTokens  string
+	// Backend selection (which STT/TTS implementation to use)
+	STTBackend string // STT backend (e.g. "whisper"); selects the Transcriber implementation
+	TTSBackend string // TTS backend (e.g. "kokoro"); selects the Synthesizer implementation
 
-	// TTS model paths (Kokoro)
-	TTSModel    string // Path to model.onnx
-	TTSVoices   string // Path to voices.bin
-	TTSTokens   string // Path to tokens.txt
-	TTSData     string // Path to espeak-ng-data
-	TTSLexicon  string // Path to lexicon.txt
-	TTSLanguage string // Language code for multi-lingual models (e.g., "en-gb")
-
-	// STT settings
+	// STT settings (generic — implementations interpret STTModel in their own way)
+	STTModel    string // STT model identifier (e.g. "whisper-tiny", "whisper-base")
 	STTLanguage string // Language code for speech recognition (e.g., "en", "es", "auto")
 
 	// LLM settings
@@ -124,6 +118,10 @@ type Config struct {
 	// Setup flags (not persistent at runtime; used during --setup invocation)
 	Setup bool // Download model files and exit
 	Force bool // Re-download even if model files already exist
+
+	// Informational flags (handled in main, not here)
+	ListVoices bool   // List all available TTS voices and exit
+	VoiceInfo  string // Show details for a specific voice and exit
 }
 
 // DefaultConfig returns a configuration with sensible defaults.
@@ -145,14 +143,16 @@ func DefaultConfig() *Config {
 		Temperature:  0.7, // Default creativity level
 		SearxngURL:   "",  // Empty = use DuckDuckGo fallback
 
-		// TTS defaults (Kokoro af_bella American female voice - highest quality)
-		TTSVoice:     "af_bella", // American female Bella (A- grade, most expressive)
-		TTSSpeakerID: 2,          // Speaker ID for af_bella in Kokoro multi-lang v1.0 model
+		// TTS defaults (voice name and speaker ID are generic TTS concepts)
+		TTSVoice:     "af_bella", // Default voice
+		TTSSpeakerID: 2,          // Default speaker ID
 		TTSSpeed:     0.93,
 
-		// STT defaults (Whisper multilingual)
-		WhisperModel: "tiny", // Default to tiny model (fast, memory-efficient)
-		STTLanguage:  "en",   // Default to English for STT
+		// STT defaults
+		STTBackend:  "whisper",      // Default STT backend
+		TTSBackend:  "kokoro",       // Default TTS backend
+		STTModel:    "whisper-tiny", // Default STT model name (implementations strip their prefix)
+		STTLanguage: "en",           // Default to English for STT
 
 		// No wake word by default (always listening)
 		WakeWord: "",
@@ -181,16 +181,16 @@ func DefaultConfig() *Config {
 func ParseFlags() (*Config, error) {
 	cfg := DefaultConfig()
 
-	// Voice listing flags
-	listVoices := flag.Bool("list-voices", false, "List all available TTS voices and exit")
-	voiceInfo := flag.String("voice-info", "", "Show detailed information about a specific voice and exit")
+	// Informational flags (handled by the caller after ParseFlags returns)
+	flag.BoolVar(&cfg.ListVoices, "list-voices", false, "List all available TTS voices and exit")
+	flag.StringVar(&cfg.VoiceInfo, "voice-info", "", "Show detailed information about a specific voice and exit")
 
 	// Setup flags
 	flag.BoolVar(&cfg.Setup, "setup", false, "Download required model files then exit (idempotent, safe to re-run)")
 	flag.BoolVar(&cfg.Force, "force", false, "Force re-download of model files even if they already exist (use with --setup)")
 
 	// Model directory
-	flag.StringVar(&cfg.ModelDir, "model-dir", cfg.ModelDir, "Directory containing model files (Whisper, VAD, TTS)")
+	flag.StringVar(&cfg.ModelDir, "model-dir", cfg.ModelDir, "Base directory for all model files")
 
 	// Audio settings
 	flag.IntVar(&cfg.SampleRate, "sample-rate", cfg.SampleRate, "Audio sample rate for speech recognition")
@@ -211,11 +211,15 @@ func ParseFlags() (*Config, error) {
 	// TTS settings
 	ttsSpeed := float64(cfg.TTSSpeed)
 	flag.Float64Var(&ttsSpeed, "tts-speed", ttsSpeed, "Text-to-speech speed multiplier")
-	flag.StringVar(&cfg.TTSVoice, "tts-voice", cfg.TTSVoice, "TTS voice name for Kokoro (e.g., 'bf_emma' British female). See https://github.com/k2-fsa/sherpa-onnx/releases/tag/tts-models")
-	flag.IntVar(&cfg.TTSSpeakerID, "tts-speaker-id", cfg.TTSSpeakerID, "TTS speaker ID for Kokoro model (bf_emma=21, af_bella=2)")
+	flag.StringVar(&cfg.TTSVoice, "tts-voice", cfg.TTSVoice, "TTS voice name (e.g., 'bf_emma', 'af_bella')")
+	flag.IntVar(&cfg.TTSSpeakerID, "tts-speaker-id", cfg.TTSSpeakerID, "TTS speaker ID (bf_emma=21, af_bella=2)")
+
+	// Backend selection
+	flag.StringVar(&cfg.STTBackend, "stt-backend", cfg.STTBackend, "STT backend implementation (e.g. 'whisper')")
+	flag.StringVar(&cfg.TTSBackend, "tts-backend", cfg.TTSBackend, "TTS backend implementation (e.g. 'kokoro')")
 
 	// STT settings
-	flag.StringVar(&cfg.WhisperModel, "whisper-model", cfg.WhisperModel, "Whisper model size (tiny, base, small, medium, large). Use 'tiny' for memory-constrained devices like Jetson")
+	flag.StringVar(&cfg.STTModel, "stt-model", cfg.STTModel, "STT model identifier (e.g. whisper-tiny, whisper-base, whisper-small)")
 	flag.StringVar(&cfg.STTLanguage, "stt-language", cfg.STTLanguage, "STT language code (e.g., 'en', 'es', 'fr', 'auto' for detection)")
 
 	// Hardware acceleration
@@ -242,20 +246,6 @@ func ParseFlags() (*Config, error) {
 	flag.IntVar(&cfg.PostPlaybackDelayMs, "post-playback-delay-ms", cfg.PostPlaybackDelayMs, "Delay in milliseconds before resuming mic after playback (only for 'wait' mode)")
 
 	flag.Parse()
-
-	// Handle voice listing commands
-	if *listVoices {
-		PrintVoices()
-		os.Exit(0)
-	}
-
-	if *voiceInfo != "" {
-		if err := PrintVoiceInfo(*voiceInfo); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
-		}
-		os.Exit(0)
-	}
 
 	cfg.TTSSpeed = float32(ttsSpeed)
 	cfg.VadThreshold = float32(vadThreshold)
@@ -301,32 +291,6 @@ func ParseFlags() (*Config, error) {
 	// Auto-detect and normalize thread counts
 	cfg.normalizeThreadCounts()
 
-	// Set derived paths
-	cfg.VADModel = filepath.Join(cfg.ModelDir, "silero_vad.onnx")
-	cfg.WhisperEncoder = filepath.Join(cfg.ModelDir, "whisper", fmt.Sprintf("whisper-%s-encoder.int8.onnx", cfg.WhisperModel))
-	cfg.WhisperDecoder = filepath.Join(cfg.ModelDir, "whisper", fmt.Sprintf("whisper-%s-decoder.int8.onnx", cfg.WhisperModel))
-	cfg.WhisperTokens = filepath.Join(cfg.ModelDir, "whisper", fmt.Sprintf("whisper-%s-tokens.txt", cfg.WhisperModel))
-
-	// Kokoro TTS model paths (multi-lang v1.0 - supports CoreML on macOS)
-	ttsDir := filepath.Join(cfg.ModelDir, "tts", "kokoro-multi-lang-v1_0")
-	cfg.TTSModel = filepath.Join(ttsDir, "model.onnx")
-	cfg.TTSVoices = filepath.Join(ttsDir, "voices.bin")
-	cfg.TTSTokens = filepath.Join(ttsDir, "tokens.txt")
-	cfg.TTSData = filepath.Join(ttsDir, "espeak-ng-data")
-
-	// Set lexicon based on voice language (required for multi-lingual Kokoro v1.0+)
-	// The model includes lexicon-us-en.txt, lexicon-gb-en.txt, and lexicon-zh.txt
-	cfg.TTSLexicon = getLexiconForVoice(ttsDir, cfg.TTSVoice)
-	// For non-English voices without lexicon support, use espeak-ng language code
-	cfg.TTSLanguage = getLanguageForVoice(cfg.TTSVoice)
-
-	// Validate paths exist (skip when running setup, since models may not be present yet)
-	if !cfg.Setup {
-		if err := cfg.validate(); err != nil {
-			return nil, err
-		}
-	}
-
 	return cfg, nil
 }
 
@@ -367,28 +331,6 @@ func (c *Config) normalizeThreadCounts() {
 	}
 }
 
-func (c *Config) validate() error {
-	// Interrupt mode is validated during parsing via ParseInterruptMode
-
-	requiredFiles := []string{
-		c.VADModel,
-		c.WhisperEncoder,
-		c.WhisperDecoder,
-		c.WhisperTokens,
-		c.TTSModel,
-		c.TTSVoices,
-		c.TTSTokens,
-	}
-
-	for _, path := range requiredFiles {
-		if _, err := os.Stat(path); os.IsNotExist(err) {
-			return fmt.Errorf("required file not found: %s\nRun with --setup to download models", path)
-		}
-	}
-
-	return nil
-}
-
 // detectProvider auto-detects the best hardware acceleration provider for the current platform.
 func detectProvider() string {
 	switch runtime.GOOS {
@@ -404,57 +346,4 @@ func detectProvider() string {
 	default:
 		return "cpu"
 	}
-}
-
-// getLexiconForVoice returns the appropriate lexicon file path based on the voice name.
-// Kokoro v1.0+ multi-lingual models use lexicon files for phonemization.
-// The model includes: lexicon-us-en.txt (American), lexicon-gb-en.txt (British), lexicon-zh.txt (Chinese)
-//
-// Voice prefixes and their lexicon files:
-//   - af_*, am_*: American English -> lexicon-us-en.txt
-//   - bf_*, bm_*: British English  -> lexicon-gb-en.txt
-//   - zf_*, zm_*: Mandarin Chinese -> lexicon-zh.txt (combined with English)
-//   - Other languages (es, fr, hi, it, ja, pt): Use espeak-ng via lang parameter
-func getLexiconForVoice(ttsDir, voiceName string) string {
-	voice := GetVoice(voiceName)
-	if voice == nil {
-		return filepath.Join(ttsDir, "lexicon-us-en.txt") // Default to American English
-	}
-
-	switch voice.EspeakCode {
-	case "en-us": // American English
-		return filepath.Join(ttsDir, "lexicon-us-en.txt")
-	case "en-gb": // British English
-		return filepath.Join(ttsDir, "lexicon-gb-en.txt")
-	case "cmn": // Mandarin Chinese (with English fallback)
-		return filepath.Join(ttsDir, "lexicon-us-en.txt") + "," + filepath.Join(ttsDir, "lexicon-zh.txt")
-	default:
-		// For other languages, return empty (will use lang parameter instead)
-		return ""
-	}
-}
-
-// getLanguageForVoice returns the espeak-ng language code for non-English voices.
-// This is only used when lexicon files are not available for a language.
-// Reference: https://github.com/k2-fsa/sherpa-onnx/blob/master/sherpa-onnx/csrc/offline-tts-kokoro-model-config.cc
-//
-// Voice prefixes and their language codes:
-//   - ef_*, em_*: Spanish          -> "es"
-//   - ff_*:       French           -> "fr"
-//   - hf_*, hm_*: Hindi            -> "hi"
-//   - if_*, im_*: Italian          -> "it"
-//   - jf_*, jm_*: Japanese         -> "ja"
-//   - pf_*, pm_*: Portuguese BR    -> "pt-br"
-func getLanguageForVoice(voiceName string) string {
-	voice := GetVoice(voiceName)
-	if voice == nil {
-		return "" // Use lexicon for English
-	}
-
-	// English and Chinese use lexicon files, return empty for them
-	if voice.EspeakCode == "en-us" || voice.EspeakCode == "en-gb" || voice.EspeakCode == "cmn" {
-		return ""
-	}
-
-	return voice.EspeakCode
 }

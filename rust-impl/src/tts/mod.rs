@@ -7,7 +7,7 @@
 //! To add a new TTS backend:
 //! 1. Implement [`SpeechSynthesizer`] in a new file.
 //! 2. Implement [`ModelProvider`] so the binary can download/verify model files.
-//! 3. Wire the new implementation in `main.rs`.
+//! 3. Register the new backend in [`new_synthesizer`] and [`new_model_provider`].
 
 mod kokoro;
 mod text;
@@ -62,6 +62,47 @@ pub trait ModelProvider: Send + Sync {
 
     /// Human-readable name for this TTS implementation (e.g. `"Kokoro"`).
     fn name(&self) -> &'static str;
+
+    /// Print all available voices for this TTS backend.
+    fn print_voices(&self);
+
+    /// Print detailed information about a specific voice.
+    ///
+    /// # Errors
+    /// Returns an error if the voice name is not found.
+    fn print_voice_info(&self, name: &str) -> Result<()>;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Factory functions
+// ─────────────────────────────────────────────────────────────────────────────
+
+use crate::config::AppConfig;
+
+/// Create the [`SpeechSynthesizer`] for the configured TTS backend.
+///
+/// Each backend interprets the TTS-related config fields in its own way (e.g.
+/// Kokoro looks up `tts_voice` in a built-in catalog). To add a new backend,
+/// add a match arm here and in [`new_model_provider`].
+///
+/// # Errors
+/// Returns an error if the backend name is unknown or initialization fails.
+pub fn new_synthesizer(config: &AppConfig) -> Result<Box<dyn SpeechSynthesizer>> {
+    match config.tts_backend.to_lowercase().as_str() {
+        "kokoro" => Ok(Box::new(KokoroSynthesizer::new(config)?)),
+        other => anyhow::bail!("unknown TTS backend {:?} (available: kokoro)", other),
+    }
+}
+
+/// Return the [`ModelProvider`] for the configured TTS backend.
+///
+/// # Errors
+/// Returns an error if the backend name is unknown.
+pub fn new_model_provider(config: &AppConfig) -> Result<Box<dyn ModelProvider>> {
+    match config.tts_backend.to_lowercase().as_str() {
+        "kokoro" => Ok(Box::new(KokoroModelProvider)),
+        other => anyhow::bail!("unknown TTS backend {:?} (available: kokoro)", other),
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -71,7 +112,7 @@ pub trait ModelProvider: Send + Sync {
 /// Configuration bundle for [`spawn_tts_task`].
 pub struct TtsTaskConfig {
     /// TTS synthesizer (CPU-bound; protected by a blocking mutex).
-    pub synthesizer: Arc<Mutex<dyn SpeechSynthesizer>>,
+    pub synthesizer: Arc<Mutex<Box<dyn SpeechSynthesizer>>>,
     /// Audio output device.
     pub player: Arc<Player>,
     /// Microphone active flag; set to `false` to pause capture in `Wait` mode.
@@ -178,7 +219,7 @@ pub fn spawn_tts_task(mut response_rx: mpsc::Receiver<String>, config: TtsTaskCo
                             match synth.synthesize_sentence(sentence) {
                                 Ok(s) => s,
                                 Err(e) => {
-                                    error!("\u{274c} TTS error for sentence {}/{}: {}", i + 1, total_sentences, e);
+                                    error!("❌ TTS error for sentence {}/{}: {}", i + 1, total_sentences, e);
                                     continue;
                                 }
                             }
@@ -198,31 +239,31 @@ pub fn spawn_tts_task(mut response_rx: mpsc::Receiver<String>, config: TtsTaskCo
                     continue;
                 }
                 played += 1;
-                info!("\u{1f50a} Playing sentence {}/{} ({} samples)", played, total_sentences, samples.len());
+                info!("🔊 Playing sentence {}/{} ({} samples)", played, total_sentences, samples.len());
 
                 if interrupt_mode == InterruptMode::Always && user_speaking.load(Ordering::Relaxed) {
-                    info!("\u{23f8}\u{fe0f}  Synthesis interrupted by speech");
+                    info!("⏸️  Synthesis interrupted by speech");
                     player.interrupt();
                     was_interrupted = true;
                     break;
                 }
 
                 if shutdown.load(Ordering::Relaxed) {
-                    info!("\u{1f6d1} Shutdown requested during playback, stopping audio");
+                    info!("🛑 Shutdown requested during playback, stopping audio");
                     player.interrupt();
                     break;
                 }
 
                 if !player.play(&samples) {
                     if interrupt_mode == InterruptMode::Always {
-                        info!("\u{23f8}\u{fe0f}  Playback interrupted");
+                        info!("⏸️  Playback interrupted");
                         was_interrupted = true;
                     }
                     break;
                 }
 
                 if interrupt_mode == InterruptMode::Always && user_speaking.load(Ordering::Relaxed) {
-                    info!("\u{23f8}\u{fe0f}  Playback interrupted by speech");
+                    info!("⏸️  Playback interrupted by speech");
                     player.interrupt();
                     was_interrupted = true;
                     break;
@@ -267,6 +308,6 @@ fn drain_channel(rx: &mut mpsc::Receiver<String>, label: &str) {
         discarded += 1;
     }
     if discarded > 0 {
-        info!("\u{1f5d1}\u{fe0f}  Discarded {} {}", discarded, label);
+        info!("🗑️  Discarded {} {}", discarded, label);
     }
 }

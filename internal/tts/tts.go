@@ -8,8 +8,15 @@
 //  1. Implement [Synthesizer] in a new file.
 //  2. Implement [ModelProvider] so the binary can download/verify required model files
 //     without an external setup script.
-//  3. Wire the new implementation in [cmd/assistant/main.go].
+//  3. Register the new backend in [NewSynthesizer] and [NewModelProvider].
 package tts
+
+import (
+	"fmt"
+	"strings"
+
+	"github.com/agalue/sherpa-voice-assistant/internal/config"
+)
 
 // AudioOutput contains generated audio data.
 type AudioOutput struct {
@@ -37,6 +44,8 @@ type Synthesizer interface {
 //
 // Every TTS implementation must implement this interface so that the binary can
 // download, verify, and report on its model files without an external script.
+// It also handles voice listing so that --list-voices / --voice-info are
+// dispatched generically through the interface.
 type ModelProvider interface {
 	// EnsureModels downloads any model files that are absent from modelDir.
 	// If force is true, all files are re-downloaded even if they already exist.
@@ -48,4 +57,46 @@ type ModelProvider interface {
 
 	// Name returns a human-readable name for the TTS implementation (e.g. "Kokoro").
 	Name() string
+
+	// PrintVoices lists all available voices for this TTS backend.
+	PrintVoices()
+
+	// PrintVoiceInfo prints detailed information about a specific voice.
+	// Returns an error if the voice name is not found.
+	PrintVoiceInfo(name string) error
+}
+
+// NewSynthesizer creates the [Synthesizer] for the configured TTS backend.
+//
+// Each backend interprets the TTS-related config fields in its own way (e.g.
+// Kokoro looks up TTSVoice in a built-in catalog). To add a new backend, add
+// a case here and in [NewModelProvider].
+func NewSynthesizer(cfg *config.Config) (Synthesizer, error) {
+	switch strings.ToLower(cfg.TTSBackend) {
+	case "kokoro":
+		return NewKokoroSynthesizer(&KokoroConfig{
+			ModelDir:   cfg.ModelDir,
+			Voice:      cfg.TTSVoice,
+			SpeakerID:  cfg.TTSSpeakerID,
+			Speed:      cfg.TTSSpeed,
+			Provider:   cfg.TTSProvider,
+			Verbose:    cfg.Verbose,
+			NumThreads: cfg.TTSThreads,
+		})
+	default:
+		return nil, fmt.Errorf("unknown TTS backend %q (available: kokoro)", cfg.TTSBackend)
+	}
+}
+
+// NewModelProvider returns the [ModelProvider] for the configured TTS backend.
+//
+// The returned provider handles model download, verification, and voice listing
+// for the selected backend. To add a new backend, add a case here.
+func NewModelProvider(cfg *config.Config) (ModelProvider, error) {
+	switch strings.ToLower(cfg.TTSBackend) {
+	case "kokoro":
+		return &KokoroModelProvider{}, nil
+	default:
+		return nil, fmt.Errorf("unknown TTS backend %q (available: kokoro)", cfg.TTSBackend)
+	}
 }

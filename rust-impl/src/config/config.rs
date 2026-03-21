@@ -1,14 +1,14 @@
 //! Application configuration and CLI argument parsing.
+//!
+//! [`AppConfig`] holds only generic pipeline parameters. Model-specific
+//! configuration (paths, voices, validation) lives in the STT and TTS
+//! implementations.
 
 use std::path::PathBuf;
 
-use anyhow::Result;
 use clap::{Parser, ValueEnum};
 use serde::{Deserialize, Serialize};
 use tracing::info;
-
-// Voice data is now in voices.rs - simpler struct with just essential fields.
-use super::voices;
 
 /// Hardware acceleration provider for ONNX models.
 /// Auto-detected based on platform if not specified.
@@ -85,6 +85,14 @@ pub struct AppConfig {
     #[arg(long, short = 'd', env = "MODEL_DIR", default_value_os_t = default_model_dir())]
     pub model_dir: PathBuf,
 
+    /// STT backend implementation (e.g. 'whisper')
+    #[arg(long, default_value = "whisper")]
+    pub stt_backend: String,
+
+    /// TTS backend implementation (e.g. 'kokoro')
+    #[arg(long, default_value = "kokoro")]
+    pub tts_backend: String,
+
     /// Audio sample rate for speech recognition
     #[arg(long, default_value = "16000")]
     pub sample_rate: u32,
@@ -136,9 +144,9 @@ pub struct AppConfig {
     #[arg(long, default_value = "en")]
     pub stt_language: String,
 
-    /// Whisper model size (tiny, base, small, medium, large). Use 'tiny' for memory-constrained devices like Jetson
-    #[arg(long, default_value = "tiny")]
-    pub whisper_model: String,
+    /// STT model identifier (e.g. whisper-tiny, whisper-base, whisper-small)
+    #[arg(long, default_value = "whisper-tiny")]
+    pub stt_model: String,
 
     /// Hardware acceleration provider (auto-detected if not specified)
     #[arg(long, value_enum)]
@@ -195,25 +203,11 @@ pub struct AppConfig {
 
 impl AppConfig {
     /// Parse configuration from command line arguments.
+    ///
+    /// Voice listing flags (`--list-voices`, `--voice-info`) are set as fields
+    /// but **not** handled here — the caller (main) dispatches them after parsing.
     pub fn from_args() -> Self {
         let mut config = Self::parse();
-
-        // Handle voice listing commands
-        if config.list_voices {
-            voices::print_voices();
-            std::process::exit(0);
-        }
-
-        if let Some(ref voice_name) = config.voice_info {
-            match voices::print_voice_info(voice_name) {
-                Ok(_) => std::process::exit(0),
-                Err(e) => {
-                    eprintln!("Error: {}", e);
-                    std::process::exit(1);
-                }
-            }
-        }
-
         config.normalize_thread_counts();
         config
     }
@@ -285,136 +279,6 @@ impl AppConfig {
         self.tts_provider.or(self.provider).unwrap_or_else(detect_provider)
     }
 
-    /// Get the path to the Whisper encoder model (multilingual).
-    pub fn whisper_encoder_path(&self) -> PathBuf {
-        self.model_dir.join("whisper").join(format!("whisper-{}-encoder.int8.onnx", self.whisper_model))
-    }
-
-    /// Get the path to the Whisper decoder model (multilingual).
-    pub fn whisper_decoder_path(&self) -> PathBuf {
-        self.model_dir.join("whisper").join(format!("whisper-{}-decoder.int8.onnx", self.whisper_model))
-    }
-
-    /// Get the path to the Whisper tokens file (multilingual).
-    pub fn whisper_tokens_path(&self) -> PathBuf {
-        self.model_dir.join("whisper").join(format!("whisper-{}-tokens.txt", self.whisper_model))
-    }
-
-    /// Get the effective STT language code for Whisper.
-    /// Returns empty string for auto-detection, otherwise the language code.
-    pub fn effective_stt_language(&self) -> &str {
-        if self.stt_language.eq_ignore_ascii_case("auto") {
-            "" // Empty string triggers auto-detection in Whisper
-        } else {
-            &self.stt_language
-        }
-    }
-
-    /// Get the path to the VAD model.
-    pub fn vad_model_path(&self) -> PathBuf {
-        self.model_dir.join("silero_vad.onnx")
-    }
-
-    /// Get the path to the Kokoro TTS model (multi-lang v1.0 - supports CoreML).
-    pub fn tts_model_path(&self) -> PathBuf {
-        self.model_dir.join("tts").join("kokoro-multi-lang-v1_0").join("model.onnx")
-    }
-
-    /// Get the path to the Kokoro TTS voices.bin file.
-    pub fn tts_voices_path(&self) -> PathBuf {
-        self.model_dir.join("tts").join("kokoro-multi-lang-v1_0").join("voices.bin")
-    }
-
-    /// Get the path to the TTS tokens file.
-    pub fn tts_tokens_path(&self) -> PathBuf {
-        self.model_dir.join("tts").join("kokoro-multi-lang-v1_0").join("tokens.txt")
-    }
-
-    /// Get the path to the TTS data directory.
-    pub fn tts_data_dir(&self) -> PathBuf {
-        self.model_dir.join("tts").join("kokoro-multi-lang-v1_0").join("espeak-ng-data")
-    }
-
-    /// Get the path to the TTS dict directory (for Chinese segmentation).
-    pub fn tts_dict_dir(&self) -> PathBuf {
-        self.model_dir.join("tts").join("kokoro-multi-lang-v1_0").join("dict")
-    }
-
-    /// Get the lexicon file path for Kokoro TTS based on voice name.
-    /// The model includes lexicon-us-en.txt (American), lexicon-gb-en.txt (British), lexicon-zh.txt (Chinese)
-    /// For English/Chinese, use lexicon files. For other languages, return empty (use lang instead).
-    pub fn tts_lexicon(&self) -> String {
-        let tts_dir = self.model_dir.join("tts").join("kokoro-multi-lang-v1_0");
-        if self.tts_voice.len() >= 2 {
-            match &self.tts_voice[..2] {
-                "af" | "am" => tts_dir.join("lexicon-us-en.txt").to_string_lossy().to_string(),
-                "bf" | "bm" => tts_dir.join("lexicon-gb-en.txt").to_string_lossy().to_string(),
-                "zf" | "zm" => {
-                    // Chinese with English fallback
-                    format!("{},{}", tts_dir.join("lexicon-us-en.txt").to_string_lossy(), tts_dir.join("lexicon-zh.txt").to_string_lossy())
-                }
-                _ => String::new(), // Other languages use lang parameter
-            }
-        } else {
-            tts_dir.join("lexicon-us-en.txt").to_string_lossy().to_string() // Default
-        }
-    }
-
-    /// Get the language code for non-English voices that need espeak-ng.
-    /// For English/Chinese, lexicon files are used instead.
-    /// Reference: <https://github.com/k2-fsa/sherpa-onnx/blob/master/sherpa-onnx/csrc/offline-tts-kokoro-model-config.cc>
-    pub fn tts_language(&self) -> &str {
-        if self.tts_voice.len() >= 2 {
-            match &self.tts_voice[..2] {
-                "ef" | "em" => "es",    // Spanish
-                "ff" => "fr",           // French
-                "hf" | "hm" => "hi",    // Hindi
-                "if" | "im" => "it",    // Italian
-                "jf" | "jm" => "ja",    // Japanese
-                "pf" | "pm" => "pt-br", // Portuguese BR
-                _ => "",                // English/Chinese use lexicon files
-            }
-        } else {
-            "" // Default (use lexicon)
-        }
-    }
-
-    /// Validate the configuration.
-    pub fn validate(&self) -> Result<()> {
-        // Check model directory exists
-        if !self.model_dir.exists() {
-            anyhow::bail!("Model directory does not exist: {}", self.model_dir.display());
-        }
-
-        // Check required model files
-        let required_files = [
-            self.whisper_encoder_path(),
-            self.whisper_decoder_path(),
-            self.whisper_tokens_path(),
-            self.vad_model_path(),
-            self.tts_model_path(),
-            self.tts_voices_path(),
-            self.tts_tokens_path(),
-        ];
-
-        for path in &required_files {
-            if !path.exists() {
-                anyhow::bail!("Required model file not found: {}\nRun with --setup to download models", path.display());
-            }
-        }
-
-        // Validate numeric ranges
-        if !(0.0..=1.0).contains(&self.vad_threshold) {
-            anyhow::bail!("VAD threshold must be between 0.0 and 1.0");
-        }
-
-        if self.tts_speed <= 0.0 {
-            anyhow::bail!("TTS speed must be positive");
-        }
-
-        Ok(())
-    }
-
     /// Log the current configuration.
     pub fn log_config(&self) {
         info!("Configuration:");
@@ -424,6 +288,8 @@ impl AppConfig {
         info!("  Ollama URL: {}", self.ollama_url);
         info!("  Ollama model: {}", self.ollama_model);
         info!("  System prompt: {}...", &self.system_prompt.chars().take(50).collect::<String>());
+        info!("  STT backend: {}", self.stt_backend);
+        info!("  TTS backend: {}", self.tts_backend);
         info!("  TTS voice: {}", self.tts_voice);
         info!("  TTS speed: {}", self.tts_speed);
         info!("  STT language: {}", self.stt_language);

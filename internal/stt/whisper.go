@@ -29,9 +29,8 @@ type WhisperRecognizer struct {
 
 // WhisperConfig holds configuration for [WhisperRecognizer].
 type WhisperConfig struct {
-	Encoder    string // Path to encoder .onnx file
-	Decoder    string // Path to decoder .onnx file
-	Tokens     string // Path to tokens .txt file
+	ModelDir   string // Base model directory (Whisper files resolved automatically)
+	ModelSize  string // Model variant (e.g. "tiny", "base", "small")
 	SampleRate int
 	WakeWord   string
 	Provider   string // Hardware acceleration provider (cpu, cuda, coreml)
@@ -42,9 +41,13 @@ type WhisperConfig struct {
 
 // NewWhisperRecognizer creates a [WhisperRecognizer] that satisfies [Transcriber].
 func NewWhisperRecognizer(cfg *WhisperConfig) (*WhisperRecognizer, error) {
+	encoder := filepath.Join(cfg.ModelDir, "whisper", fmt.Sprintf("whisper-%s-encoder.int8.onnx", cfg.ModelSize))
+	decoder := filepath.Join(cfg.ModelDir, "whisper", fmt.Sprintf("whisper-%s-decoder.int8.onnx", cfg.ModelSize))
+	tokens := filepath.Join(cfg.ModelDir, "whisper", fmt.Sprintf("whisper-%s-tokens.txt", cfg.ModelSize))
+
 	recognizerConfig := &sherpa.OfflineRecognizerConfig{}
-	recognizerConfig.ModelConfig.Whisper.Encoder = cfg.Encoder
-	recognizerConfig.ModelConfig.Whisper.Decoder = cfg.Decoder
+	recognizerConfig.ModelConfig.Whisper.Encoder = encoder
+	recognizerConfig.ModelConfig.Whisper.Decoder = decoder
 
 	// "auto" -> "" triggers Whisper's built-in language detection.
 	language := cfg.Language
@@ -54,7 +57,7 @@ func NewWhisperRecognizer(cfg *WhisperConfig) (*WhisperRecognizer, error) {
 	recognizerConfig.ModelConfig.Whisper.Language = language
 	recognizerConfig.ModelConfig.Whisper.Task = "transcribe"
 	recognizerConfig.ModelConfig.Whisper.TailPaddings = -1
-	recognizerConfig.ModelConfig.Tokens = cfg.Tokens
+	recognizerConfig.ModelConfig.Tokens = tokens
 	recognizerConfig.ModelConfig.NumThreads = cfg.NumThreads
 	recognizerConfig.ModelConfig.Provider = cfg.Provider
 	recognizerConfig.DecodingMethod = "greedy_search"

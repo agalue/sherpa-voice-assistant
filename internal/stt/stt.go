@@ -9,8 +9,15 @@
 //  1. Implement [VoiceDetector] and [Transcriber] in a new file.
 //  2. Implement [ModelProvider] so the binary can download/verify required model
 //     files without an external setup script.
-//  3. Wire the new implementation in [cmd/assistant/main.go].
+//  3. Register the new backend in [NewTranscriber] and [NewModelProvider].
 package stt
+
+import (
+	"fmt"
+	"strings"
+
+	"github.com/agalue/sherpa-voice-assistant/internal/config"
+)
 
 // AudioSegment carries a completed speech segment delivered by the VAD.
 type AudioSegment = []float32
@@ -68,4 +75,42 @@ type ModelProvider interface {
 
 	// Name returns a human-readable name for the STT implementation (e.g. "Whisper").
 	Name() string
+}
+
+// NewTranscriber creates the [Transcriber] for the configured STT backend.
+//
+// Each backend interprets cfg.STTModel in its own way (e.g. Whisper strips
+// the "whisper-" prefix to get the model size). To add a new backend, add
+// a case here and in [NewModelProvider].
+func NewTranscriber(cfg *config.Config) (Transcriber, error) {
+	switch strings.ToLower(cfg.STTBackend) {
+	case "whisper":
+		modelSize := strings.TrimPrefix(cfg.STTModel, "whisper-")
+		return NewWhisperRecognizer(&WhisperConfig{
+			ModelDir:   cfg.ModelDir,
+			ModelSize:  modelSize,
+			SampleRate: cfg.SampleRate,
+			WakeWord:   cfg.WakeWord,
+			Provider:   cfg.STTProvider,
+			Language:   cfg.STTLanguage,
+			Verbose:    cfg.Verbose,
+			NumThreads: cfg.STTThreads,
+		})
+	default:
+		return nil, fmt.Errorf("unknown STT backend %q (available: whisper)", cfg.STTBackend)
+	}
+}
+
+// NewModelProvider returns the [ModelProvider] for the configured STT backend.
+//
+// The returned provider handles model download and verification for the
+// selected backend. To add a new backend, add a case here.
+func NewModelProvider(cfg *config.Config) (ModelProvider, error) {
+	switch strings.ToLower(cfg.STTBackend) {
+	case "whisper":
+		modelSize := strings.TrimPrefix(cfg.STTModel, "whisper-")
+		return &WhisperModelProvider{ModelSize: modelSize}, nil
+	default:
+		return nil, fmt.Errorf("unknown STT backend %q (available: whisper)", cfg.STTBackend)
+	}
 }

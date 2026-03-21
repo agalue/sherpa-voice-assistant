@@ -8,7 +8,7 @@
 //! To add a new STT backend:
 //! 1. Implement [`VoiceDetector`] or [`Transcriber`] in a new file.
 //! 2. Implement [`ModelProvider`] so the binary can download/verify model files.
-//! 3. Wire the new implementation in `main.rs`.
+//! 3. Register the new backend in [`new_transcriber`] and [`new_model_provider`].
 
 mod silero;
 mod whisper;
@@ -77,6 +77,41 @@ pub trait ModelProvider: Send + Sync {
 
     /// Human-readable name for this STT implementation (e.g. `"Whisper"`).
     fn name(&self) -> &'static str;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Factory functions
+// ─────────────────────────────────────────────────────────────────────────────
+
+use crate::config::AppConfig;
+
+/// Create the [`Transcriber`] for the configured STT backend.
+///
+/// Each backend interprets `config.stt_model` in its own way (e.g. Whisper
+/// strips the `whisper-` prefix to derive the model size). To add a new
+/// backend, add a match arm here and in [`new_model_provider`].
+///
+/// # Errors
+/// Returns an error if the backend name is unknown or initialization fails.
+pub fn new_transcriber(config: &AppConfig) -> Result<Arc<dyn Transcriber>> {
+    match config.stt_backend.to_lowercase().as_str() {
+        "whisper" => Ok(Arc::new(WhisperRecognizer::new(config)?)),
+        other => anyhow::bail!("unknown STT backend {:?} (available: whisper)", other),
+    }
+}
+
+/// Return the [`ModelProvider`] for the configured STT backend.
+///
+/// # Errors
+/// Returns an error if the backend name is unknown.
+pub fn new_model_provider(config: &AppConfig) -> Result<Box<dyn ModelProvider>> {
+    match config.stt_backend.to_lowercase().as_str() {
+        "whisper" => {
+            let model_size = config.stt_model.strip_prefix("whisper-").unwrap_or(&config.stt_model).to_string();
+            Ok(Box::new(WhisperModelProvider { model_size }))
+        }
+        other => anyhow::bail!("unknown STT backend {:?} (available: whisper)", other),
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

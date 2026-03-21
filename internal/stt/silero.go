@@ -54,7 +54,7 @@ type SileroVAD struct {
 
 // SileroConfig holds configuration for [SileroVAD].
 type SileroConfig struct {
-	Model           string  // Path to silero_vad.onnx
+	ModelDir        string  // Base model directory (silero_vad.onnx is resolved automatically)
 	Threshold       float32 // VAD confidence threshold (0.0–1.0)
 	SilenceDuration float32 // Silence duration in seconds before speech is considered ended
 	SampleRate      int
@@ -64,8 +64,10 @@ type SileroConfig struct {
 
 // NewSileroVAD creates a [SileroVAD] that satisfies [VoiceDetector].
 func NewSileroVAD(cfg *SileroConfig) (*SileroVAD, error) {
+	modelPath := filepath.Join(cfg.ModelDir, "silero_vad.onnx")
+
 	vadConfig := &sherpa.VadModelConfig{}
-	vadConfig.SileroVad.Model = cfg.Model
+	vadConfig.SileroVad.Model = modelPath
 	vadConfig.SileroVad.Threshold = cfg.Threshold
 	vadConfig.SileroVad.MinSilenceDuration = cfg.SilenceDuration
 	vadConfig.SileroVad.MinSpeechDuration = VADMinSpeechDuration

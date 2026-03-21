@@ -2,9 +2,9 @@
 //
 // This program implements a real-time voice assistant with:
 // - Voice Activity Detection (Silero-VAD)
-// - Speech-to-Text (Whisper, via the stt.Transcriber interface)
+// - Speech-to-Text (configurable via --stt-backend; default: Whisper)
 // - LLM Integration (Ollama)
-// - Text-to-Speech (Kokoro, via the tts.Synthesizer interface)
+// - Text-to-Speech (configurable via --tts-backend; default: Kokoro)
 //
 // Run with --setup to download required model files.
 // Run with --setup --force to re-download all models.
@@ -33,6 +33,22 @@ func main() {
 	cfg, err := config.ParseFlags()
 	if err != nil {
 		log.Fatalf("Configuration error: %v", err)
+	}
+
+	// Handle informational flags first (no model loading required).
+	ttsProvider, err := tts.NewModelProvider(cfg)
+	if err != nil {
+		log.Fatalf("%v", err)
+	}
+	if cfg.ListVoices {
+		ttsProvider.PrintVoices()
+		os.Exit(0)
+	}
+	if cfg.VoiceInfo != "" {
+		if err := ttsProvider.PrintVoiceInfo(cfg.VoiceInfo); err != nil {
+			log.Fatalf("%v", err)
+		}
+		os.Exit(0)
 	}
 
 	// --setup: download all required model files then exit.
@@ -74,7 +90,7 @@ func main() {
 	// Create Silero VAD (voice activity detection)
 	log.Println("🧠 Loading speech recognition models...")
 	vad, err := stt.NewSileroVAD(&stt.SileroConfig{
-		Model:           cfg.VADModel,
+		ModelDir:        cfg.ModelDir,
 		Threshold:       cfg.VadThreshold,
 		SilenceDuration: cfg.VADSilenceDuration,
 		SampleRate:      cfg.SampleRate,
@@ -87,19 +103,9 @@ func main() {
 	defer vad.Close()
 
 	// Create Whisper transcriber (speech-to-text)
-	recognizer, err := stt.NewWhisperRecognizer(&stt.WhisperConfig{
-		Encoder:    cfg.WhisperEncoder,
-		Decoder:    cfg.WhisperDecoder,
-		Tokens:     cfg.WhisperTokens,
-		SampleRate: cfg.SampleRate,
-		WakeWord:   cfg.WakeWord,
-		Provider:   cfg.STTProvider,
-		Language:   cfg.STTLanguage,
-		Verbose:    cfg.Verbose,
-		NumThreads: cfg.STTThreads,
-	})
+	recognizer, err := stt.NewTranscriber(cfg)
 	if err != nil {
-		log.Fatalf("Failed to create Whisper recognizer: %v", err)
+		log.Fatalf("Failed to create STT transcriber: %v", err)
 	}
 	defer recognizer.Close()
 
@@ -110,19 +116,7 @@ func main() {
 
 	// Create TTS synthesizer (implements tts.Synthesizer)
 	log.Println("🔊 Loading text-to-speech models...")
-	synth, err := tts.NewKokoroSynthesizer(&tts.KokoroConfig{
-		Model:      cfg.TTSModel,
-		Voices:     cfg.TTSVoices,
-		Tokens:     cfg.TTSTokens,
-		DataDir:    cfg.TTSData,
-		Lexicon:    cfg.TTSLexicon,
-		Language:   cfg.TTSLanguage,
-		SpeakerID:  cfg.TTSSpeakerID,
-		Speed:      cfg.TTSSpeed,
-		Provider:   cfg.TTSProvider,
-		Verbose:    cfg.Verbose,
-		TTSThreads: cfg.TTSThreads,
-	})
+	synth, err := tts.NewSynthesizer(cfg)
 	if err != nil {
 		log.Fatalf("Failed to create TTS synthesizer: %v", err)
 	}
@@ -226,16 +220,22 @@ func runSetup(cfg *config.Config) error {
 	}
 
 	sileroProvider := &stt.SileroModelProvider{}
-	whisperProvider := &stt.WhisperModelProvider{ModelSize: cfg.WhisperModel}
-	ttsProvider := &tts.KokoroModelProvider{}
+	sttProvider, err := stt.NewModelProvider(cfg)
+	if err != nil {
+		return fmt.Errorf("STT backend: %w", err)
+	}
+	ttsProvider, err := tts.NewModelProvider(cfg)
+	if err != nil {
+		return fmt.Errorf("TTS backend: %w", err)
+	}
 
 	log.Printf("📥 [VAD] %s — downloading models…", sileroProvider.Name())
 	if err := sileroProvider.EnsureModels(cfg.ModelDir, cfg.Force); err != nil {
 		return fmt.Errorf("VAD model download: %w", err)
 	}
 
-	log.Printf("📥 [STT] %s — downloading models…", whisperProvider.Name())
-	if err := whisperProvider.EnsureModels(cfg.ModelDir, cfg.Force); err != nil {
+	log.Printf("📥 [STT] %s — downloading models…", sttProvider.Name())
+	if err := sttProvider.EnsureModels(cfg.ModelDir, cfg.Force); err != nil {
 		return fmt.Errorf("STT model download: %w", err)
 	}
 
@@ -248,7 +248,7 @@ func runSetup(cfg *config.Config) error {
 	log.Println("🔍 Verifying model files…")
 	var allMissing []string
 	allMissing = append(allMissing, sileroProvider.VerifyModels(cfg.ModelDir)...)
-	allMissing = append(allMissing, whisperProvider.VerifyModels(cfg.ModelDir)...)
+	allMissing = append(allMissing, sttProvider.VerifyModels(cfg.ModelDir)...)
 	allMissing = append(allMissing, ttsProvider.VerifyModels(cfg.ModelDir)...)
 
 	if len(allMissing) > 0 {

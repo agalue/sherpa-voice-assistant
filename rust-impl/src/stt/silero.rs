@@ -68,8 +68,10 @@ impl SileroVad {
     pub fn new(config: &AppConfig) -> Result<(Self, mpsc::Receiver<Vec<f32>>)> {
         let provider = config.effective_stt_provider();
 
+        let vad_model = config.model_dir.join("silero_vad.onnx");
+
         let vad_config = SileroVadConfig {
-            model: config.vad_model_path().to_string_lossy().to_string(),
+            model: vad_model.to_string_lossy().to_string(),
             threshold: config.vad_threshold,
             sample_rate: config.sample_rate,
             min_silence_duration: config.vad_silence_duration,

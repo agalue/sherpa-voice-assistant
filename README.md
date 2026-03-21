@@ -9,8 +9,8 @@ For the LLM processing, I'm relying on [Ollama](https://ollama.com/), as it work
 ## Features
 
 - **Voice Activity Detection (VAD)**: Silero-VAD for accurate speech boundary detection
-- **Speech-to-Text (STT)**: Whisper multilingual model for high-quality transcription (99 languages)
-- **Text-to-Speech (TTS)**: Kokoro for natural-sounding voice synthesis with emotional expression
+- **Speech-to-Text (STT)**: Pluggable backend (`--stt-backend`); ships with Whisper multilingual model for high-quality transcription (99 languages)
+- **Text-to-Speech (TTS)**: Pluggable backend (`--tts-backend`); ships with Kokoro for natural-sounding voice synthesis with emotional expression
 - **LLM Integration**: Ollama API for conversational AI with agentic tool calling
 - **Agentic Tools**: Weather information and web search capabilities
 - **Low Latency**: Optimized for real-time conversation
@@ -36,7 +36,7 @@ This implementation supports multiple platforms with hardware acceleration:
 
 Providers are **auto-detected** at runtime based on your platform. Kokoro TTS supports full CoreML acceleration on macOS and CUDA on Linux.
 
-You can override providers with `--provider` (for STT) and `--tts-provider` flags.
+You can override providers with `--provider` (global), `--stt-provider`, and `--tts-provider` flags.
 
 ## Tested Hardware
 
@@ -61,9 +61,9 @@ This solution has been designed and tested on the following platforms:
 ```mermaid
 flowchart LR
     subgraph Pipeline
-        A[🎤 Audio Capture<br/>malgo] --> B[🗣️ VAD + STT<br/>Whisper]
+        A[🎤 Audio Capture<br/>malgo] --> B[🗣️ VAD + STT<br/>--stt-backend]
         B --> C[🧠 LLM<br/>Ollama]
-        C --> D[📢 TTS<br/>Kokoro]
+        C --> D[📢 TTS<br/>--tts-backend]
         D --> E[🔊 Playback<br/>malgo]
         C -.->|Tool Calls| F[🔧 Tools<br/>Weather & Search]
         F -.->|Results| C
@@ -145,18 +145,18 @@ This downloads:
 ./voice-assistant --setup -model-dir /custom/path
 
 # Combine with a different Whisper model size
-./voice-assistant --setup -whisper-model small
+./voice-assistant --setup --stt-model whisper-small
 ```
 
 The setup command is **idempotent** — it won't re-download existing files unless `--force` is used.
 
-**Choosing Whisper Model Size:**
+**Choosing STT Model:**
 
 | Model | Memory | Download | WER | Speed | Best For |
 |-------|--------|----------|-----|-------|----------|
-| `tiny` | ~390MB | 111MB | ~5.0% | 32x realtime | **Jetson, edge devices** |
-| `base` | ~740MB | 198MB | ~3.4% | 16x realtime | Balanced accuracy/speed |
-| `small` | ~2.4GB | 610MB | ~2.2% | 6x realtime | **Desktop, best accuracy** |
+| `whisper-tiny` | ~390MB | 111MB | ~5.0% | 32x realtime | **Jetson, edge devices** |
+| `whisper-base` | ~740MB | 198MB | ~3.4% | 16x realtime | Balanced accuracy/speed |
+| `whisper-small` | ~2.4GB | 610MB | ~2.2% | 6x realtime | **Desktop, best accuracy** |
 
 ### 2. Build the Application
 
@@ -246,28 +246,43 @@ The wrapper script automatically:
 
 **Jetson Orin Nano Super users**: See [JETSON_OPTIMIZATION.md](JETSON_OPTIMIZATION.md) for memory optimization details.
 
-### Selecting Whisper Model Size
+### Selecting STT / TTS Backend
 
-**Use the `-whisper-model` flag to choose STT model size:**
+The assistant supports **pluggable STT and TTS backends** via `--stt-backend` and `--tts-backend`. Each backend interprets `--stt-model` and `--tts-voice` in its own way.
 
 ```bash
-# Use tiny model (default, recommended for most devices)
-./voice-assistant -whisper-model tiny
+# Defaults (equivalent to not passing the flags)
+./voice-assistant --stt-backend whisper --tts-backend kokoro
+```
 
-# Use base model (better accuracy, more memory)
-./voice-assistant -whisper-model base
+Currently available backends:
+- **STT**: `whisper` (default)
+- **TTS**: `kokoro` (default)
 
-# Use small model (best accuracy, requires more memory)
-./voice-assistant -whisper-model small
+To add a new backend, implement the `Transcriber`/`Synthesizer` interface and register it in the factory (see `internal/stt/stt.go` and `internal/tts/tts.go`).
+
+### Selecting STT Model
+
+**Use the `--stt-model` flag to choose the STT model:**
+
+```bash
+# Use Whisper tiny model (default, recommended for most devices)
+./voice-assistant --stt-model whisper-tiny
+
+# Use Whisper base model (better accuracy, more memory)
+./voice-assistant --stt-model whisper-base
+
+# Use Whisper small model (best accuracy, requires more memory)
+./voice-assistant --stt-model whisper-small
 ```
 
 **Model Comparison:**
 
 | Model | Memory | Accuracy (WER) | Speed | Use Case |
 |-------|--------|----------------|-------|----------|
-| `tiny` | ~390MB | ~5.0% | 32x RT | **Jetson**, Raspberry Pi, low-memory devices |
-| `base` | ~740MB | ~3.4% | 16x RT | Balanced for most systems |
-| `small` | ~2.4GB | ~2.2% | 6x RT | **Desktop** systems, best quality |
+| `whisper-tiny` | ~390MB | ~5.0% | 32x RT | **Jetson**, Raspberry Pi, low-memory devices |
+| `whisper-base` | ~740MB | ~3.4% | 16x RT | Balanced for most systems |
+| `whisper-small` | ~2.4GB | ~2.2% | 6x RT | **Desktop** systems, best quality |
 
 **For Jetson Orin Nano (8GB unified memory)**, tiny is critical to avoid OOM errors. See [JETSON_OPTIMIZATION.md](JETSON_OPTIMIZATION.md) for details.
 
@@ -812,12 +827,12 @@ voice-assistant/
 │   │   ├── sherpa_darwin.go  # macOS-specific sherpa-onnx bindings (CoreML)
 │   │   └── sherpa_linux.go   # Linux-specific sherpa-onnx bindings (CUDA)
 │   ├── stt/
-│   │   ├── stt.go            # VoiceDetector and Transcriber interfaces
+│   │   ├── stt.go            # VoiceDetector, Transcriber interfaces + factory
 │   │   ├── silero.go         # Silero VAD implementation
 │   │   ├── whisper.go        # Whisper transcription implementation
 │   │   └── processor.go      # STT processing goroutine
 │   └── tts/
-│       ├── tts.go            # Synthesizer interface
+│       ├── tts.go            # Synthesizer interface + factory
 │       ├── kokoro.go         # Kokoro TTS implementation
 │       ├── text.go           # Sentence splitting utilities
 │       └── processor.go      # TTS playback pipeline goroutine
@@ -837,12 +852,12 @@ voice-assistant/
 
 ### Alternative Models
 
-You can select a different Whisper model size with `-whisper-model` or provide custom model paths:
+You can select a different STT model with `--stt-model`:
 
 **STT alternatives:**
-- `whisper-tiny.en` - Faster, less accurate
-- `whisper-base.en` - Balance of speed/accuracy
-- `whisper-medium.en` - Higher accuracy, slower
+- `whisper-tiny` - Fastest, ~5% WER (default)
+- `whisper-base` - Balance of speed/accuracy
+- `whisper-small` - Higher accuracy, slower
 
 **TTS voices (Kokoro built-in):**
 - `af_bella` (speaker ID 2) - American female, high quality (default)

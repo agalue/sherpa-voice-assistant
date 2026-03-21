@@ -1,9 +1,9 @@
 //! Voice Assistant - A real-time voice assistant using local LLMs.
 //!
 //! This application provides a voice interface to interact with local language models
-//! using speech recognition (Whisper via [`stt::Transcriber`]), voice activity detection
-//! (Silero VAD via [`stt::VoiceDetector`]), text-to-speech (Kokoro via
-//! [`tts::SpeechSynthesizer`]), and LLM inference (Ollama via RIG).
+//! using speech recognition (configurable via `--stt-backend`; default: Whisper),
+//! voice activity detection (Silero VAD), text-to-speech (configurable via
+//! `--tts-backend`; default: Kokoro), and LLM inference (Ollama via RIG).
 //!
 //! Run with `--setup` to download required model files.
 //! Run with `--setup --force` to re-download all models.
@@ -29,8 +29,7 @@ use tracing_subscriber::fmt::time::LocalTime;
 use audio::{Capturer, Player};
 use config::AppConfig;
 use llm::LlmClient;
-use stt::{ModelProvider as SttModelProvider, SileroModelProvider, SileroVad, Transcriber, VoiceDetector, WhisperModelProvider, WhisperRecognizer};
-use tts::{KokoroModelProvider, KokoroSynthesizer, ModelProvider as TtsModelProvider, SpeechSynthesizer};
+use stt::{ModelProvider as SttModelProvider, SileroModelProvider, SileroVad, VoiceDetector};
 
 /// Wait for shutdown signal (Ctrl+C or SIGTERM).
 async fn wait_for_shutdown(shutdown: Arc<AtomicBool>) {
@@ -68,16 +67,16 @@ fn run_setup(config: &AppConfig) -> Result<()> {
     }
 
     let silero_provider = SileroModelProvider;
-    let stt_provider = WhisperModelProvider { model_size: config.whisper_model.clone() };
-    let tts_provider = KokoroModelProvider;
+    let stt_provider = stt::new_model_provider(config)?;
+    let tts_provider = tts::new_model_provider(config)?;
 
-    info!("\u{1f4e5} [VAD] {} — downloading models…", silero_provider.name());
+    info!("📥 [VAD] {} — downloading models…", silero_provider.name());
     silero_provider.ensure_models(&config.model_dir, config.force)?;
 
-    info!("\u{1f4e5} [STT] {} — downloading models…", stt_provider.name());
+    info!("📥 [STT] {} — downloading models…", stt_provider.name());
     stt_provider.ensure_models(&config.model_dir, config.force)?;
 
-    info!("\u{1f4e5} [TTS] {} — downloading models…", tts_provider.name());
+    info!("📥 [TTS] {} — downloading models…", tts_provider.name());
     tts_provider.ensure_models(&config.model_dir, config.force)?;
 
     // Final verification
@@ -118,16 +117,25 @@ async fn main() -> Result<()> {
 
     info!("🎤 Voice Assistant v{}", env!("CARGO_PKG_VERSION"));
 
+    // Handle informational flags first (no model loading required).
+    let tts_provider = tts::new_model_provider(&config)?;
+    if config.list_voices {
+        tts_provider.print_voices();
+        std::process::exit(0);
+    }
+    if let Some(ref voice_name) = config.voice_info {
+        match tts_provider.print_voice_info(voice_name) {
+            Ok(()) => std::process::exit(0),
+            Err(e) => {
+                eprintln!("Error: {e}");
+                std::process::exit(1);
+            }
+        }
+    }
+
     // --setup: download all required model files then exit.
     if config.setup {
         return run_setup(&config);
-    }
-
-    // Validate configuration (checks model files exist)
-    if let Err(e) = config.validate() {
-        error!("❌ Configuration error: {}", e);
-        error!("Run with --setup to download required models.");
-        std::process::exit(1);
     }
 
     // Create and initialize components.
@@ -138,16 +146,16 @@ async fn main() -> Result<()> {
 
     // Wrap behind trait objects so the pipeline is model-agnostic.
     let voice_detector: Arc<dyn VoiceDetector> = Arc::new(silero);
-    let transcriber: Arc<dyn Transcriber> = Arc::new(WhisperRecognizer::new(&config)?);
+    let transcriber = stt::new_transcriber(&config)?;
 
-    // KokoroSynthesizer implements SpeechSynthesizer.
-    let synthesizer = KokoroSynthesizer::new(&config)?;
+    // Create TTS synthesizer via factory (implements SpeechSynthesizer).
+    let synthesizer = tts::new_synthesizer(&config)?;
     let synth_sample_rate = synthesizer.sample_rate();
 
     let llm_client = LlmClient::new(&config)?;
 
     // Wrap synthesizer behind trait object inside mutex.
-    let synthesizer: Arc<Mutex<dyn tts::SpeechSynthesizer>> = Arc::new(Mutex::new(synthesizer));
+    let synthesizer: Arc<Mutex<Box<dyn tts::SpeechSynthesizer>>> = Arc::new(Mutex::new(synthesizer));
     let llm_client = Arc::new(tokio::sync::Mutex::new(llm_client));
 
     // Create capturer with callback that feeds VoiceDetector directly.

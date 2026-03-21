@@ -4,11 +4,11 @@ A real-time voice assistant that runs entirely locally implemented in Rust based
 
 ## Features
 
-- **Speech-to-Text**: Whisper-based multilingual speech recognition via sherpa-onnx (99 languages)
+- **Speech-to-Text**: Pluggable backend (`--stt-backend`); ships with Whisper-based multilingual speech recognition via sherpa-onnx (99 languages)
 - **Voice Activity Detection**: Silero VAD for detecting when you're speaking
 - **Local LLM**: Ollama integration via RIG for conversational AI with agentic tool calling
 - **Agentic Tools**: Weather information and web search capabilities
-- **Text-to-Speech**: Kokoro multilingual voices for natural, expressive speech synthesis
+- **Text-to-Speech**: Pluggable backend (`--tts-backend`); ships with Kokoro multilingual voices for natural, expressive speech synthesis
 - **Cross-Platform**: Runs on macOS and Linux with hardware acceleration support
 - **Low Latency**: Streaming TTS and interrupt support for responsive interaction
 - **Multilingual**: Both STT and TTS support multiple languages (English, Spanish, French, German, etc.)
@@ -22,9 +22,9 @@ A real-time voice assistant that runs entirely locally implemented in Rust based
 flowchart LR
    subgraph Voice Assistant
       Mic[🎤 Mic] --> Capture[Audio Capture]
-      Capture --> VAD[VAD + STT<br/>Whisper]
+      Capture --> VAD[VAD + STT<br/>--stt-backend]
       VAD --> LLM[LLM<br/>Ollama]
-      LLM --> TTS[TTS<br/>Kokoro]
+      LLM --> TTS[TTS<br/>--tts-backend]
       TTS --> Speaker[🔊 Speaker]
       LLM -.->|Tool Calls| Tools[🔧 Tools<br/>Weather & Search]
       Tools -.->|Results| LLM
@@ -225,6 +225,21 @@ export OLLAMA_URL=http://localhost:11434
 export OLLAMA_MODEL=qwen2.5:1.5b
 ```
 
+### Selecting STT / TTS Backend
+
+The assistant supports **pluggable STT and TTS backends** via `--stt-backend` and `--tts-backend`. Each backend interprets `--stt-model` and `--tts-voice` in its own way.
+
+```bash
+# Defaults (equivalent to not passing the flags)
+./target/release/voice-assistant --stt-backend whisper --tts-backend kokoro
+```
+
+Currently available backends:
+- **STT**: `whisper` (default)
+- **TTS**: `kokoro` (default)
+
+To add a new backend, implement the `Transcriber`/`SpeechSynthesizer` trait and register it in the factory (see `src/stt/mod.rs` and `src/tts/mod.rs`).
+
 ### Example Usage
 
 **Basic usage:**
@@ -306,11 +321,11 @@ rust-impl/
 │   ├── models/
 │   │   └── mod.rs          # HTTP download and tar.bz2 extraction helpers
 │   ├── stt/
-│   │   ├── mod.rs          # VoiceDetector, Transcriber, ModelProvider traits
+│   │   ├── mod.rs          # VoiceDetector, Transcriber, ModelProvider traits + factory
 │   │   ├── silero.rs       # Silero VAD implementation
 │   │   └── whisper.rs      # Whisper transcription implementation
 │   └── tts/
-│       ├── mod.rs          # SpeechSynthesizer, ModelProvider traits + TTS task
+│       ├── mod.rs          # SpeechSynthesizer, ModelProvider traits + factory + TTS task
 │       ├── kokoro.rs       # Kokoro TTS implementation
 │       └── text.rs         # Sentence splitting utilities
 └── scripts/
@@ -535,6 +550,7 @@ Both implementations share the same models and provide similar core functionalit
 |---------|------|-----|
 | **Audio Library** | cpal with automatic resampling (rubato) | malgo |
 | **LLM Client** | RIG framework with Ollama provider | Direct Ollama API |
+| **Pluggable STT/TTS** | ✅ `--stt-backend`, `--tts-backend` | ✅ `--stt-backend`, `--tts-backend` |
 | **Environment Variables** | ✅ MODEL_DIR, OLLAMA_URL, OLLAMA_MODEL | ❌ CLI flags only |
 | **Automatic Audio Resampling** | ✅ Via rubato | ❌ |
 | **Health Check on Startup** | ❌ | ✅ Ollama heartbeat |
