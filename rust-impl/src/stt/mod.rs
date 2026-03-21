@@ -106,9 +106,7 @@ pub fn new_transcriber(config: &AppConfig) -> Result<Arc<dyn Transcriber>> {
 /// Returns an error if the backend name is unknown.
 pub fn new_model_provider(config: &AppConfig) -> Result<Box<dyn ModelProvider>> {
     match config.stt_backend.to_lowercase().as_str() {
-        "whisper" => {
-            Ok(Box::new(WhisperModelProvider { model_size: config.stt_model.clone() }))
-        }
+        "whisper" => Ok(Box::new(WhisperModelProvider { model_size: config.stt_model.clone() })),
         other => anyhow::bail!("unknown STT backend {:?} (available: whisper)", other),
     }
 }

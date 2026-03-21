@@ -149,10 +149,10 @@ func DefaultConfig() *Config {
 		TTSSpeed:     0.93,
 
 		// STT defaults
-		STTBackend:  "whisper",      // Default STT backend
-		TTSBackend:  "kokoro",       // Default TTS backend
-		STTModel:    "tiny", // Default STT model name (e.g. "tiny", "base", "small")
-		STTLanguage: "en",           // Default to English for STT
+		STTBackend:  "whisper", // Default STT backend
+		TTSBackend:  "kokoro",  // Default TTS backend
+		STTModel:    "tiny",    // Default STT model name (e.g. "tiny", "base", "small")
+		STTLanguage: "en",      // Default to English for STT
 
 		// No wake word by default (always listening)
 		WakeWord: "",

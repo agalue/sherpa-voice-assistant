@@ -136,14 +136,10 @@ pub fn extract_tar_bz2_dir(url: &str, dest_dir: &Path) -> Result<()> {
         }
 
         // Prevent path traversal: reject entries with parent-dir, root, or prefix components.
-        if rel.components().any(|c| {
-            matches!(
-                c,
-                std::path::Component::ParentDir
-                    | std::path::Component::RootDir
-                    | std::path::Component::Prefix(_)
-            )
-        }) {
+        if rel
+            .components()
+            .any(|c| matches!(c, std::path::Component::ParentDir | std::path::Component::RootDir | std::path::Component::Prefix(_)))
+        {
             tracing::warn!("[download] skipping suspicious path in archive: {:?}", path);
             continue;
         }
