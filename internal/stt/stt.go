@@ -79,16 +79,15 @@ type ModelProvider interface {
 
 // NewTranscriber creates the [Transcriber] for the configured STT backend.
 //
-// Each backend interprets cfg.STTModel in its own way (e.g. Whisper strips
-// the "whisper-" prefix to get the model size). To add a new backend, add
-// a case here and in [NewModelProvider].
+// Each backend interprets cfg.STTModel in its own way (e.g. Whisper uses
+// it directly as the model size like "tiny", "base", "small"). To add a
+// new backend, add a case here and in [NewModelProvider].
 func NewTranscriber(cfg *config.Config) (Transcriber, error) {
 	switch strings.ToLower(cfg.STTBackend) {
 	case "whisper":
-		modelSize := strings.TrimPrefix(cfg.STTModel, "whisper-")
 		return NewWhisperRecognizer(&WhisperConfig{
 			ModelDir:   cfg.ModelDir,
-			ModelSize:  modelSize,
+			ModelSize:  cfg.STTModel,
 			SampleRate: cfg.SampleRate,
 			WakeWord:   cfg.WakeWord,
 			Provider:   cfg.STTProvider,
@@ -108,8 +107,7 @@ func NewTranscriber(cfg *config.Config) (Transcriber, error) {
 func NewModelProvider(cfg *config.Config) (ModelProvider, error) {
 	switch strings.ToLower(cfg.STTBackend) {
 	case "whisper":
-		modelSize := strings.TrimPrefix(cfg.STTModel, "whisper-")
-		return &WhisperModelProvider{ModelSize: modelSize}, nil
+		return &WhisperModelProvider{ModelSize: cfg.STTModel}, nil
 	default:
 		return nil, fmt.Errorf("unknown STT backend %q (available: whisper)", cfg.STTBackend)
 	}

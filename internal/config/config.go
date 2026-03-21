@@ -63,7 +63,7 @@ type Config struct {
 	TTSBackend string // TTS backend (e.g. "kokoro"); selects the Synthesizer implementation
 
 	// STT settings (generic — implementations interpret STTModel in their own way)
-	STTModel    string // STT model identifier (e.g. "whisper-tiny", "whisper-base")
+	STTModel    string // STT model identifier (e.g. "tiny", "base", "small")
 	STTLanguage string // Language code for speech recognition (e.g., "en", "es", "auto")
 
 	// LLM settings
@@ -151,7 +151,7 @@ func DefaultConfig() *Config {
 		// STT defaults
 		STTBackend:  "whisper",      // Default STT backend
 		TTSBackend:  "kokoro",       // Default TTS backend
-		STTModel:    "whisper-tiny", // Default STT model name (implementations strip their prefix)
+		STTModel:    "tiny", // Default STT model name (e.g. "tiny", "base", "small")
 		STTLanguage: "en",           // Default to English for STT
 
 		// No wake word by default (always listening)
@@ -219,7 +219,7 @@ func ParseFlags() (*Config, error) {
 	flag.StringVar(&cfg.TTSBackend, "tts-backend", cfg.TTSBackend, "TTS backend implementation (e.g. 'kokoro')")
 
 	// STT settings
-	flag.StringVar(&cfg.STTModel, "stt-model", cfg.STTModel, "STT model identifier (e.g. whisper-tiny, whisper-base, whisper-small)")
+	flag.StringVar(&cfg.STTModel, "stt-model", cfg.STTModel, "STT model identifier (e.g. tiny, base, small)")
 	flag.StringVar(&cfg.STTLanguage, "stt-language", cfg.STTLanguage, "STT language code (e.g., 'en', 'es', 'fr', 'auto' for detection)")
 
 	// Hardware acceleration

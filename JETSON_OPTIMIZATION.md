@@ -85,13 +85,13 @@ The `run-voice-assistant.sh` script automatically detects Jetson and pre-loads t
 
 ```bash
 # Go: Default qwen2.5:1.5b with tiny Whisper
-./run-voice-assistant.sh -ollama-model qwen2.5:1.5b -whisper-model tiny
+./run-voice-assistant.sh -ollama-model qwen2.5:1.5b -stt-model tiny
 
 # Rust: Default qwen2.5:1.5b with tiny Whisper
-./run-voice-assistant.sh --ollama-model qwen2.5:1.5b --whisper-model tiny
+./run-voice-assistant.sh --ollama-model qwen2.5:1.5b --stt-model tiny
 
 # Or use a different model
-./run-voice-assistant.sh -ollama-model qwen2.5:3b-instruct-q2_k -whisper-model tiny
+./run-voice-assistant.sh -ollama-model qwen2.5:3b-instruct-q2_k -stt-model tiny
 ```
 
 **What happens automatically on Jetson:**
@@ -108,10 +108,10 @@ For better quality responses with more memory:
 
 ```bash
 # 3b model q2_k quantization (~1.2GB)
-./run-voice-assistant.sh -ollama-model qwen2.5:3b-instruct-q2_k -whisper-model tiny
+./run-voice-assistant.sh -ollama-model qwen2.5:3b-instruct-q2_k -stt-model tiny
 
 # 3b model q3_k_m quantization (~1.5GB)  
-./run-voice-assistant.sh -ollama-model qwen2.5:3b-instruct-q3_k_m -whisper-model tiny
+./run-voice-assistant.sh -ollama-model qwen2.5:3b-instruct-q3_k_m -stt-model tiny
 ```
 
 ## Memory Optimization Summary
@@ -166,7 +166,7 @@ sudo jetson_clocks
 **Solution: Use `run-voice-assistant.sh` which auto-detects Jetson and pre-loads**
 
 ```bash
-./run-voice-assistant.sh -ollama-model qwen2.5:1.5b -whisper-model tiny
+./run-voice-assistant.sh -ollama-model qwen2.5:1.5b -stt-model tiny
 ```
 
 The script automatically handles pre-loading on Jetson. If you see errors:

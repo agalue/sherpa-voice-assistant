@@ -283,10 +283,10 @@ Examples:
     ./scripts/jetson_setup.sh preload qwen2.5:3b-instruct-q2_k
     
     # Running voice assistant (auto-detects Jetson, pre-loads model)
-    ./run-voice-assistant.sh -ollama-model qwen2.5:1.5b -whisper-model tiny
+    ./run-voice-assistant.sh -ollama-model qwen2.5:1.5b -stt-model tiny
     
     # Or use 3b model
-    ./run-voice-assistant.sh -ollama-model qwen2.5:3b-instruct-q2_k -whisper-model tiny
+    ./run-voice-assistant.sh -ollama-model qwen2.5:3b-instruct-q2_k -stt-model tiny
     
     # Check status
     ./scripts/jetson_setup.sh status
@@ -308,10 +308,10 @@ case "${1:-help}" in
         print_success "Setup complete!"
         echo
         echo "To run voice assistant (auto-detects Jetson, pre-loads model):"
-        echo "  ./run-voice-assistant.sh -ollama-model qwen2.5:1.5b -whisper-model tiny"
+        echo "  ./run-voice-assistant.sh -ollama-model qwen2.5:1.5b -stt-model tiny"
         echo
         echo "Or with 3b model:"
-        echo "  ./run-voice-assistant.sh -ollama-model qwen2.5:3b-instruct-q2_k -whisper-model tiny"
+        echo "  ./run-voice-assistant.sh -ollama-model qwen2.5:3b-instruct-q2_k -stt-model tiny"
         ;;
     configure)
         check_jetson

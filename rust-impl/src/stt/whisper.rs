@@ -36,8 +36,7 @@ impl WhisperRecognizer {
         let provider = config.effective_stt_provider();
 
         // Derive Whisper model paths from model_dir + stt_model.
-        // STT model is fully-qualified (e.g. "whisper-tiny"); strip the prefix.
-        let model_size = config.stt_model.strip_prefix("whisper-").unwrap_or(&config.stt_model);
+        let model_size = &config.stt_model;
         let whisper_dir = config.model_dir.join("whisper");
         let encoder_path = whisper_dir.join(format!("whisper-{model_size}-encoder.int8.onnx")).to_string_lossy().to_string();
         let decoder_path = whisper_dir.join(format!("whisper-{model_size}-decoder.int8.onnx")).to_string_lossy().to_string();

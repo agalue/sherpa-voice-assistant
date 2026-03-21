@@ -144,8 +144,8 @@ pub struct AppConfig {
     #[arg(long, default_value = "en")]
     pub stt_language: String,
 
-    /// STT model identifier (e.g. whisper-tiny, whisper-base, whisper-small)
-    #[arg(long, default_value = "whisper-tiny")]
+    /// STT model identifier (e.g. tiny, base, small)
+    #[arg(long, default_value = "tiny")]
     pub stt_model: String,
 
     /// Hardware acceleration provider (auto-detected if not specified)

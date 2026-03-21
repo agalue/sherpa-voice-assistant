@@ -88,8 +88,8 @@ use crate::config::AppConfig;
 /// Create the [`Transcriber`] for the configured STT backend.
 ///
 /// Each backend interprets `config.stt_model` in its own way (e.g. Whisper
-/// strips the `whisper-` prefix to derive the model size). To add a new
-/// backend, add a match arm here and in [`new_model_provider`].
+/// uses it directly as the model size like `"tiny"`, `"base"`, `"small"`).
+/// To add a new backend, add a match arm here and in [`new_model_provider`].
 ///
 /// # Errors
 /// Returns an error if the backend name is unknown or initialization fails.
@@ -107,8 +107,7 @@ pub fn new_transcriber(config: &AppConfig) -> Result<Arc<dyn Transcriber>> {
 pub fn new_model_provider(config: &AppConfig) -> Result<Box<dyn ModelProvider>> {
     match config.stt_backend.to_lowercase().as_str() {
         "whisper" => {
-            let model_size = config.stt_model.strip_prefix("whisper-").unwrap_or(&config.stt_model).to_string();
-            Ok(Box::new(WhisperModelProvider { model_size }))
+            Ok(Box::new(WhisperModelProvider { model_size: config.stt_model.clone() }))
         }
         other => anyhow::bail!("unknown STT backend {:?} (available: whisper)", other),
     }

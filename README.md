@@ -145,7 +145,7 @@ This downloads:
 ./voice-assistant --setup --model-dir /custom/path
 
 # Combine with a different Whisper model size
-./voice-assistant --setup --stt-model whisper-small
+./voice-assistant --setup --stt-model small
 ```
 
 The setup command is **idempotent** — it won't re-download existing files unless `--force` is used.
@@ -154,9 +154,9 @@ The setup command is **idempotent** — it won't re-download existing files unle
 
 | Model | Memory | Download | WER | Speed | Best For |
 |-------|--------|----------|-----|-------|----------|
-| `whisper-tiny` | ~390MB | 111MB | ~5.0% | 32x realtime | **Jetson, edge devices** |
-| `whisper-base` | ~740MB | 198MB | ~3.4% | 16x realtime | Balanced accuracy/speed |
-| `whisper-small` | ~2.4GB | 610MB | ~2.2% | 6x realtime | **Desktop, best accuracy** |
+| `tiny` | ~390MB | 111MB | ~5.0% | 32x realtime | **Jetson, edge devices** |
+| `base` | ~740MB | 198MB | ~3.4% | 16x realtime | Balanced accuracy/speed |
+| `small` | ~2.4GB | 610MB | ~2.2% | 6x realtime | **Desktop, best accuracy** |
 
 ### 2. Build the Application
 
@@ -267,22 +267,22 @@ To add a new backend, implement the `Transcriber`/`Synthesizer` interface and re
 
 ```bash
 # Use Whisper tiny model (default, recommended for most devices)
-./voice-assistant --stt-model whisper-tiny
+./voice-assistant --stt-model tiny
 
 # Use Whisper base model (better accuracy, more memory)
-./voice-assistant --stt-model whisper-base
+./voice-assistant --stt-model base
 
 # Use Whisper small model (best accuracy, requires more memory)
-./voice-assistant --stt-model whisper-small
+./voice-assistant --stt-model small
 ```
 
 **Model Comparison:**
 
 | Model | Memory | Accuracy (WER) | Speed | Use Case |
 |-------|--------|----------------|-------|----------|
-| `whisper-tiny` | ~390MB | ~5.0% | 32x RT | **Jetson**, Raspberry Pi, low-memory devices |
-| `whisper-base` | ~740MB | ~3.4% | 16x RT | Balanced for most systems |
-| `whisper-small` | ~2.4GB | ~2.2% | 6x RT | **Desktop** systems, best quality |
+| `tiny` | ~390MB | ~5.0% | 32x RT | **Jetson**, Raspberry Pi, low-memory devices |
+| `base` | ~740MB | ~3.4% | 16x RT | Balanced for most systems |
+| `small` | ~2.4GB | ~2.2% | 6x RT | **Desktop** systems, best quality |
 
 **For Jetson Orin Nano (8GB unified memory)**, tiny is critical to avoid OOM errors. See [JETSON_OPTIMIZATION.md](JETSON_OPTIMIZATION.md) for details.
 
@@ -856,9 +856,9 @@ voice-assistant/
 You can select a different STT model with `--stt-model`:
 
 **STT alternatives:**
-- `whisper-tiny` - Fastest, ~5% WER (default)
-- `whisper-base` - Balance of speed/accuracy
-- `whisper-small` - Higher accuracy, slower
+- `tiny` - Fastest, ~5% WER (default)
+- `base` - Balance of speed/accuracy
+- `small` - Higher accuracy, slower
 
 **TTS voices (Kokoro built-in):**
 - `af_bella` (speaker ID 2) - American female, high quality (default)
