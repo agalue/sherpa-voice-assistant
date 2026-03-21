@@ -167,7 +167,7 @@ impl super::ModelProvider for SileroModelProvider {
     /// Returns an error if the download fails.
     fn ensure_models(&self, model_dir: &std::path::Path, force: bool) -> Result<()> {
         let vad_dest = model_dir.join("silero_vad.onnx");
-        crate::models::download_file("https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx", &vad_dest, force)
+        crate::setup::download_file("https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx", &vad_dest, force)
     }
 
     fn verify_models(&self, model_dir: &std::path::Path) -> Vec<PathBuf> {

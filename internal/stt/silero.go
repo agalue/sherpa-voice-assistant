@@ -10,7 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/agalue/sherpa-voice-assistant/internal/models"
+	"github.com/agalue/sherpa-voice-assistant/internal/setup"
 	"github.com/agalue/sherpa-voice-assistant/internal/sherpa"
 )
 
@@ -187,7 +187,7 @@ func (p *SileroModelProvider) Name() string {
 // EnsureModels downloads silero_vad.onnx if it is absent from modelDir.
 func (p *SileroModelProvider) EnsureModels(modelDir string, force bool) error {
 	dest := filepath.Join(modelDir, "silero_vad.onnx")
-	return models.DownloadFile(
+	return setup.DownloadFile(
 		"https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx",
 		dest, force,
 	)
@@ -196,7 +196,7 @@ func (p *SileroModelProvider) EnsureModels(modelDir string, force bool) error {
 // VerifyModels returns a list of absent model file paths.
 func (p *SileroModelProvider) VerifyModels(modelDir string) []string {
 	path := filepath.Join(modelDir, "silero_vad.onnx")
-	if !models.FileExists(path) {
+	if !setup.FileExists(path) {
 		return []string{path}
 	}
 	return nil

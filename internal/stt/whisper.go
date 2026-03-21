@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/agalue/sherpa-voice-assistant/internal/models"
+	"github.com/agalue/sherpa-voice-assistant/internal/setup"
 	"github.com/agalue/sherpa-voice-assistant/internal/sherpa"
 )
 
@@ -190,7 +190,7 @@ func (p *WhisperModelProvider) VerifyModels(modelDir string) []string {
 	}
 	var missing []string
 	for _, f := range required {
-		if !models.FileExists(f) {
+		if !setup.FileExists(f) {
 			missing = append(missing, f)
 		}
 	}
@@ -218,7 +218,7 @@ func (p *WhisperModelProvider) downloadWhisper(modelDir string, force bool) erro
 	}
 
 	encoder := p.encoderPath(modelDir)
-	if !force && models.FileExists(encoder) {
+	if !force && setup.FileExists(encoder) {
 		log.Printf("[STT] Whisper %s already present, skipping", p.ModelSize)
 		return nil
 	}
@@ -236,5 +236,5 @@ func (p *WhisperModelProvider) downloadWhisper(modelDir string, force bool) erro
 		fmt.Sprintf("sherpa-onnx-whisper-%s/%s-tokens.txt", p.ModelSize, p.ModelSize):        p.tokensPath(modelDir),
 	}
 
-	return models.ExtractTarBz2Selected(url, wantFiles)
+	return setup.ExtractTarBz2Selected(url, wantFiles)
 }

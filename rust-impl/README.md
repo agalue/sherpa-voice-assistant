@@ -305,7 +305,7 @@ rust-impl/
 ├── Cargo.toml              # Dependencies and build configuration
 ├── README.md               # This file
 ├── src/
-│   ├── main.rs             # Application entry point, --setup mode, main loop
+│   ├── main.rs             # Application entry point and main loop
 │   ├── audio/
 │   │   ├── mod.rs          # Audio module exports
 │   │   ├── capture.rs      # Microphone input via cpal
@@ -318,8 +318,8 @@ rust-impl/
 │   ├── llm/
 │   │   ├── mod.rs          # LLM module exports
 │   │   └── client.rs       # RIG-based Ollama client
-│   ├── models/
-│   │   └── mod.rs          # HTTP download and tar.bz2 extraction helpers
+│   ├── setup/
+│   │   └── mod.rs          # --setup orchestration, download and extraction helpers
 │   ├── stt/
 │   │   ├── mod.rs          # VoiceDetector, Transcriber, ModelProvider traits + factory
 │   │   ├── silero.rs       # Silero VAD implementation

@@ -11,7 +11,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/agalue/sherpa-voice-assistant/internal/models"
+	"github.com/agalue/sherpa-voice-assistant/internal/setup"
 	"github.com/agalue/sherpa-voice-assistant/internal/sherpa"
 )
 
@@ -292,14 +292,14 @@ func (p *KokoroModelProvider) EnsureModels(modelDir string, force bool) error {
 	kokoroDir := filepath.Join(ttsDir, "kokoro-multi-lang-v1_0")
 	modelFile := filepath.Join(kokoroDir, "model.onnx")
 
-	if !force && models.FileExists(modelFile) {
+	if !force && setup.FileExists(modelFile) {
 		log.Println("[TTS] Kokoro model already present, skipping")
 	} else {
 		url := "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kokoro-multi-lang-v1_0.tar.bz2"
 		log.Printf("[TTS] Downloading Kokoro TTS model from %s …", url)
 		// The archive contains a top-level "kokoro-multi-lang-v1_0/" directory.
 		// ExtractTarBz2Dir strips one level, so pass kokoroDir as destination.
-		if err := models.ExtractTarBz2Dir(url, kokoroDir); err != nil {
+		if err := setup.ExtractTarBz2Dir(url, kokoroDir); err != nil {
 			return fmt.Errorf("downloading Kokoro TTS: %w", err)
 		}
 	}
@@ -312,7 +312,7 @@ func (p *KokoroModelProvider) EnsureModels(modelDir string, force bool) error {
 		log.Printf("[TTS] Downloading espeak-ng-data from %s …", url)
 		// Archive top-level is "espeak-ng-data/"; extract into kokoroDir so that
 		// the result lands at kokoroDir/espeak-ng-data/.
-		if err := models.ExtractTarBz2Dir(url, espeakDir); err != nil {
+		if err := setup.ExtractTarBz2Dir(url, espeakDir); err != nil {
 			return fmt.Errorf("downloading espeak-ng-data: %w", err)
 		}
 	}
@@ -330,7 +330,7 @@ func (p *KokoroModelProvider) VerifyModels(modelDir string) []string {
 	}
 	var missing []string
 	for _, f := range required {
-		if !models.FileExists(f) {
+		if !setup.FileExists(f) {
 			missing = append(missing, f)
 		}
 	}

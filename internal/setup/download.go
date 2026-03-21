@@ -1,9 +1,9 @@
-// Package models provides shared HTTP download and tar.bz2 extraction helpers
-// used by STT and TTS [ModelProvider] implementations.
+// Package setup provides model download/extraction helpers and the --setup
+// orchestration used by the voice assistant.
 //
 // Using stdlib only (net/http, archive/tar, compress/bzip2) to avoid adding
 // dependencies for what is an infrequently executed code path.
-package models
+package setup
 
 import (
 	"archive/tar"

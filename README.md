@@ -812,7 +812,7 @@ To see all 53 available Kokoro voices with their speaker IDs, quality grades, an
 voice-assistant/
 ├── cmd/
 │   └── assistant/
-│       └── main.go           # Main entry point, pipeline orchestration, --setup
+│       └── main.go           # Main entry point, pipeline orchestration
 ├── internal/
 │   ├── audio/
 │   │   ├── capture.go        # Microphone audio capture (malgo)
@@ -821,8 +821,9 @@ voice-assistant/
 │   │   └── config.go         # CLI flags and configuration
 │   ├── llm/
 │   │   └── client.go         # Ollama API client
-│   ├── models/
-│   │   └── download.go       # HTTP download and tar.bz2 extraction helpers
+│   ├── setup/
+│   │   ├── download.go       # HTTP download and tar.bz2 extraction helpers
+│   │   └── setup.go          # --setup orchestration (model download & verification)
 │   ├── sherpa/
 │   │   ├── sherpa_darwin.go  # macOS-specific sherpa-onnx bindings (CoreML)
 │   │   └── sherpa_linux.go   # Linux-specific sherpa-onnx bindings (CUDA)

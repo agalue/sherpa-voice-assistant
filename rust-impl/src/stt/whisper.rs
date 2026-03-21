@@ -140,7 +140,7 @@ impl super::ModelProvider for WhisperModelProvider {
     /// # Errors
     /// Returns an error if any download or extraction fails.
     fn ensure_models(&self, model_dir: &std::path::Path, force: bool) -> anyhow::Result<()> {
-        use crate::models;
+        use crate::setup;
 
         let whisper_dir = model_dir.join("whisper");
         std::fs::create_dir_all(&whisper_dir)?;
@@ -169,7 +169,7 @@ impl super::ModelProvider for WhisperModelProvider {
             ),
         ];
 
-        models::extract_tar_bz2_selected(&url, &want_files)?;
+        setup::extract_tar_bz2_selected(&url, &want_files)?;
         Ok(())
     }
 

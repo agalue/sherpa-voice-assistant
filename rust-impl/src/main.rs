@@ -11,7 +11,7 @@
 mod audio;
 mod config;
 mod llm;
-mod models;
+mod setup;
 mod stt;
 mod tts;
 
@@ -22,14 +22,14 @@ use anyhow::Result;
 use parking_lot::Mutex;
 use tokio::signal;
 use tokio::sync::mpsc;
-use tracing::{debug, error, info};
+use tracing::{debug, info};
 use tracing_subscriber::EnvFilter;
 use tracing_subscriber::fmt::time::LocalTime;
 
 use audio::{Capturer, Player};
 use config::AppConfig;
 use llm::LlmClient;
-use stt::{ModelProvider as SttModelProvider, SileroModelProvider, SileroVad, VoiceDetector};
+use stt::{SileroVad, VoiceDetector};
 
 /// Wait for shutdown signal (Ctrl+C or SIGTERM).
 async fn wait_for_shutdown(shutdown: Arc<AtomicBool>) {
@@ -54,48 +54,6 @@ async fn wait_for_shutdown(shutdown: Arc<AtomicBool>) {
     }
 
     shutdown.store(true, Ordering::SeqCst);
-}
-
-/// Run the setup mode: download all required model files and exit.
-fn run_setup(config: &AppConfig) -> Result<()> {
-    info!("🔧 Voice Assistant Setup — downloading model files");
-    info!("   Model directory: {}", config.model_dir.display());
-    if config.force {
-        info!("   Mode: force re-download");
-    } else {
-        info!("   Mode: skip existing files");
-    }
-
-    let silero_provider = SileroModelProvider;
-    let stt_provider = stt::new_model_provider(config)?;
-    let tts_provider = tts::new_model_provider(config)?;
-
-    info!("📥 [VAD] {} — downloading models…", silero_provider.name());
-    silero_provider.ensure_models(&config.model_dir, config.force)?;
-
-    info!("📥 [STT] {} — downloading models…", stt_provider.name());
-    stt_provider.ensure_models(&config.model_dir, config.force)?;
-
-    info!("📥 [TTS] {} — downloading models…", tts_provider.name());
-    tts_provider.ensure_models(&config.model_dir, config.force)?;
-
-    // Final verification
-    info!("🔍 Verifying model files…");
-    let mut all_missing: Vec<std::path::PathBuf> = Vec::new();
-    all_missing.extend(silero_provider.verify_models(&config.model_dir));
-    all_missing.extend(stt_provider.verify_models(&config.model_dir));
-    all_missing.extend(tts_provider.verify_models(&config.model_dir));
-
-    if !all_missing.is_empty() {
-        error!("❌ Some model files are still missing:");
-        for f in &all_missing {
-            error!("   - {}", f.display());
-        }
-        anyhow::bail!("{} model file(s) missing after setup", all_missing.len());
-    }
-
-    info!("✅ All model files are present. Run the assistant without --setup to start.");
-    Ok(())
 }
 
 #[tokio::main]
@@ -135,7 +93,7 @@ async fn main() -> Result<()> {
 
     // --setup: download all required model files then exit.
     if config.setup {
-        return run_setup(&config);
+        return setup::run_setup(&config);
     }
 
     // Create and initialize components.

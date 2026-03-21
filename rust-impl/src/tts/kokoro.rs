@@ -234,7 +234,7 @@ impl super::ModelProvider for KokoroModelProvider {
     /// # Errors
     /// Returns an error if any download or extraction fails.
     fn ensure_models(&self, model_dir: &std::path::Path, force: bool) -> anyhow::Result<()> {
-        use crate::models;
+        use crate::setup;
 
         let tts_dir = model_dir.join("tts");
         std::fs::create_dir_all(&tts_dir)?;
@@ -248,7 +248,7 @@ impl super::ModelProvider for KokoroModelProvider {
             let url = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kokoro-multi-lang-v1_0.tar.bz2";
             info!("[TTS] Downloading Kokoro TTS model from {} …", url);
             // Archive contains top-level "kokoro-multi-lang-v1_0/"; strip one level into kokoro_dir.
-            models::extract_tar_bz2_dir(url, &kokoro_dir)?;
+            setup::extract_tar_bz2_dir(url, &kokoro_dir)?;
         }
 
         // espeak-ng-data is usually bundled inside the Kokoro archive; only fetch
@@ -258,7 +258,7 @@ impl super::ModelProvider for KokoroModelProvider {
             let url = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/espeak-ng-data.tar.bz2";
             info!("[TTS] Downloading espeak-ng-data from {} …", url);
             // Archive top-level is "espeak-ng-data/"; strip into espeak_dir.
-            models::extract_tar_bz2_dir(url, &espeak_dir)?;
+            setup::extract_tar_bz2_dir(url, &espeak_dir)?;
         }
 
         Ok(())

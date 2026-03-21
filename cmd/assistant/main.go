@@ -12,7 +12,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -24,6 +23,7 @@ import (
 	"github.com/agalue/sherpa-voice-assistant/internal/audio"
 	"github.com/agalue/sherpa-voice-assistant/internal/config"
 	"github.com/agalue/sherpa-voice-assistant/internal/llm"
+	"github.com/agalue/sherpa-voice-assistant/internal/setup"
 	"github.com/agalue/sherpa-voice-assistant/internal/stt"
 	"github.com/agalue/sherpa-voice-assistant/internal/tts"
 )
@@ -53,7 +53,16 @@ func main() {
 
 	// --setup: download all required model files then exit.
 	if cfg.Setup {
-		if err := runSetup(cfg); err != nil {
+		sttProvider, err := stt.NewModelProvider(cfg)
+		if err != nil {
+			log.Fatalf("STT backend: %v", err)
+		}
+		providers := []setup.ModelProvider{
+			&stt.SileroModelProvider{},
+			sttProvider,
+			ttsProvider,
+		}
+		if err := setup.Run(cfg.ModelDir, cfg.Force, providers); err != nil {
 			log.Fatalf("Setup failed: %v", err)
 		}
 		os.Exit(0)
@@ -207,60 +216,6 @@ func main() {
 	case <-time.After(5 * time.Second):
 		log.Println("⚠️ Shutdown timeout, forcing exit")
 	}
-}
-
-// runSetup downloads all model files required by the configured STT and TTS backends.
-func runSetup(cfg *config.Config) error {
-	log.Println("🔧 Voice Assistant Setup — downloading model files")
-	log.Printf("   Model directory: %s", cfg.ModelDir)
-	if cfg.Force {
-		log.Println("   Mode: force re-download")
-	} else {
-		log.Println("   Mode: skip existing files")
-	}
-
-	sileroProvider := &stt.SileroModelProvider{}
-	sttProvider, err := stt.NewModelProvider(cfg)
-	if err != nil {
-		return fmt.Errorf("STT backend: %w", err)
-	}
-	ttsProvider, err := tts.NewModelProvider(cfg)
-	if err != nil {
-		return fmt.Errorf("TTS backend: %w", err)
-	}
-
-	log.Printf("📥 [VAD] %s — downloading models…", sileroProvider.Name())
-	if err := sileroProvider.EnsureModels(cfg.ModelDir, cfg.Force); err != nil {
-		return fmt.Errorf("VAD model download: %w", err)
-	}
-
-	log.Printf("📥 [STT] %s — downloading models…", sttProvider.Name())
-	if err := sttProvider.EnsureModels(cfg.ModelDir, cfg.Force); err != nil {
-		return fmt.Errorf("STT model download: %w", err)
-	}
-
-	log.Printf("📥 [TTS] %s — downloading models…", ttsProvider.Name())
-	if err := ttsProvider.EnsureModels(cfg.ModelDir, cfg.Force); err != nil {
-		return fmt.Errorf("TTS model download: %w", err)
-	}
-
-	// Final verification
-	log.Println("🔍 Verifying model files…")
-	var allMissing []string
-	allMissing = append(allMissing, sileroProvider.VerifyModels(cfg.ModelDir)...)
-	allMissing = append(allMissing, sttProvider.VerifyModels(cfg.ModelDir)...)
-	allMissing = append(allMissing, ttsProvider.VerifyModels(cfg.ModelDir)...)
-
-	if len(allMissing) > 0 {
-		log.Println("❌ Some model files are still missing:")
-		for _, f := range allMissing {
-			log.Printf("   - %s", f)
-		}
-		return fmt.Errorf("%d model file(s) missing after setup", len(allMissing))
-	}
-
-	log.Println("✅ All model files are present. Run the assistant without --setup to start.")
-	return nil
 }
 
 func init() {
