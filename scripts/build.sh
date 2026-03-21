@@ -576,7 +576,7 @@ if [[ -f "voice-assistant" ]]; then
     echo -e "${GREEN}═══════════════════════════════════════════════════════════${NC}"
     echo
     echo "Before running, ensure you have:"
-    echo "  1. Downloaded models: ./scripts/setup.sh"
+    echo "  1. Downloaded models: ./voice-assistant --setup"
     echo "  2. Started Ollama: ollama serve"
     echo "  3. Loaded a model: ollama run qwen2.5:1.5b"
     echo

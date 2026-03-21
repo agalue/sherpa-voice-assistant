@@ -120,6 +120,10 @@ type Config struct {
 
 	// Debug
 	Verbose bool
+
+	// Setup flags (not persistent at runtime; used during --setup invocation)
+	Setup bool // Download model files and exit
+	Force bool // Re-download even if model files already exist
 }
 
 // DefaultConfig returns a configuration with sensible defaults.
@@ -180,6 +184,10 @@ func ParseFlags() (*Config, error) {
 	// Voice listing flags
 	listVoices := flag.Bool("list-voices", false, "List all available TTS voices and exit")
 	voiceInfo := flag.String("voice-info", "", "Show detailed information about a specific voice and exit")
+
+	// Setup flags
+	flag.BoolVar(&cfg.Setup, "setup", false, "Download required model files then exit (idempotent, safe to re-run)")
+	flag.BoolVar(&cfg.Force, "force", false, "Force re-download of model files even if they already exist (use with --setup)")
 
 	// Model directory
 	flag.StringVar(&cfg.ModelDir, "model-dir", cfg.ModelDir, "Directory containing model files (Whisper, VAD, TTS)")
@@ -312,9 +320,11 @@ func ParseFlags() (*Config, error) {
 	// For non-English voices without lexicon support, use espeak-ng language code
 	cfg.TTSLanguage = getLanguageForVoice(cfg.TTSVoice)
 
-	// Validate paths exist
-	if err := cfg.validate(); err != nil {
-		return nil, err
+	// Validate paths exist (skip when running setup, since models may not be present yet)
+	if !cfg.Setup {
+		if err := cfg.validate(); err != nil {
+			return nil, err
+		}
 	}
 
 	return cfg, nil
@@ -372,7 +382,7 @@ func (c *Config) validate() error {
 
 	for _, path := range requiredFiles {
 		if _, err := os.Stat(path); os.IsNotExist(err) {
-			return fmt.Errorf("required file not found: %s\nRun scripts/setup.sh to download models", path)
+			return fmt.Errorf("required file not found: %s\nRun with --setup to download models", path)
 		}
 	}
 

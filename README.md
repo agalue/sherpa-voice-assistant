@@ -125,19 +125,30 @@ nvcc --version  # Should show CUDA version
 
 ### 1. Download Models
 
-Run the setup script to download required models (default: ~900MB total):
+Build the application first (see step 2), then run the built-in setup command to download required models (default: ~900MB total):
 
 ```bash
-chmod +x scripts/setup.sh
-./scripts/setup.sh
+./voice-assistant --setup
 ```
 
 This downloads:
 - **Silero-VAD**: Voice activity detection model
-- **Whisper tiny + small**: Multilingual speech recognition models (int8 quantized, 99 languages)
+- **Whisper tiny**: Multilingual speech recognition model (int8 quantized, 99 languages)
 - **Kokoro v1.0**: Multilingual text-to-speech model with natural voices
 
-**Note**: By default, both `tiny` (default runtime model) and `small` (for better accuracy) are downloaded (~721MB total).
+**Setup Options:**
+```bash
+# Force re-download even if files exist
+./voice-assistant --setup --force
+
+# Custom model directory
+./voice-assistant --setup -model-dir /custom/path
+
+# Combine with a different Whisper model size
+./voice-assistant --setup -whisper-model small
+```
+
+The setup command is **idempotent** — it won't re-download existing files unless `--force` is used.
 
 **Choosing Whisper Model Size:**
 
@@ -146,33 +157,6 @@ This downloads:
 | `tiny` | ~390MB | 111MB | ~5.0% | 32x realtime | **Jetson, edge devices** |
 | `base` | ~740MB | 198MB | ~3.4% | 16x realtime | Balanced accuracy/speed |
 | `small` | ~2.4GB | 610MB | ~2.2% | 6x realtime | **Desktop, best accuracy** |
-
-Download specific models:
-
-```bash
-# Download tiny model only (recommended for Jetson)
-WHISPER_MODELS='tiny' ./scripts/setup.sh
-
-# Download multiple models
-WHISPER_MODELS='tiny small' ./scripts/setup.sh
-
-# Download all models
-WHISPER_MODELS='tiny base small' ./scripts/setup.sh
-```
-
-**Setup Script Options:**
-```bash
-# Custom installation directory
-./scripts/setup.sh --assets-dir /custom/path
-
-# Force re-download even if files exist
-./scripts/setup.sh --force
-
-# Combine options
-WHISPER_MODELS='tiny' ./scripts/setup.sh --assets-dir /custom/path --force
-```
-
-The setup script is **idempotent** - it won't re-download existing files unless `--force` is used.
 
 ### 2. Build the Application
 
@@ -813,7 +797,7 @@ To see all 53 available Kokoro voices with their speaker IDs, quality grades, an
 voice-assistant/
 ├── cmd/
 │   └── assistant/
-│       └── main.go           # Main entry point and pipeline orchestration
+│       └── main.go           # Main entry point, pipeline orchestration, --setup
 ├── internal/
 │   ├── audio/
 │   │   ├── capture.go        # Microphone audio capture (malgo)
@@ -822,15 +806,22 @@ voice-assistant/
 │   │   └── config.go         # CLI flags and configuration
 │   ├── llm/
 │   │   └── client.go         # Ollama API client
+│   ├── models/
+│   │   └── download.go       # HTTP download and tar.bz2 extraction helpers
 │   ├── sherpa/
 │   │   ├── sherpa_darwin.go  # macOS-specific sherpa-onnx bindings (CoreML)
 │   │   └── sherpa_linux.go   # Linux-specific sherpa-onnx bindings (CUDA)
 │   ├── stt/
-│   │   └── recognizer.go     # VAD + Whisper speech recognition
+│   │   ├── stt.go            # VoiceDetector and Transcriber interfaces
+│   │   ├── silero.go         # Silero VAD implementation
+│   │   ├── whisper.go        # Whisper transcription implementation
+│   │   └── processor.go      # STT processing goroutine
 │   └── tts/
-│       └── synthesizer.go    # Kokoro text-to-speech
+│       ├── tts.go            # Synthesizer interface
+│       ├── kokoro.go         # Kokoro TTS implementation
+│       ├── text.go           # Sentence splitting utilities
+│       └── processor.go      # TTS playback pipeline goroutine
 ├── scripts/
-│   ├── setup.sh              # Model download script
 │   └── build.sh              # Build script with CUDA support
 ├── go.mod
 └── README.md
@@ -846,7 +837,7 @@ voice-assistant/
 
 ### Alternative Models
 
-You can use different models by modifying the setup script or providing custom paths:
+You can select a different Whisper model size with `-whisper-model` or provide custom model paths:
 
 **STT alternatives:**
 - `whisper-tiny.en` - Faster, less accurate

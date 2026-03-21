@@ -1,4 +1,5 @@
 // Package tts provides text-to-speech functionality using sherpa-onnx.
+// This file contains tests for the shared text processing utilities.
 package tts
 
 import (

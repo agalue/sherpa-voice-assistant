@@ -65,6 +65,14 @@ impl Provider {
 #[command(name = "voice-assistant")]
 #[command(author, version, about = "A real-time voice assistant", long_about = None)]
 pub struct AppConfig {
+    /// Download required model files then exit (idempotent, safe to re-run)
+    #[arg(long)]
+    pub setup: bool,
+
+    /// Force re-download of model files even if they already exist (use with --setup)
+    #[arg(long)]
+    pub force: bool,
+
     /// List all available TTS voices and exit
     #[arg(long)]
     pub list_voices: bool,
@@ -391,7 +399,7 @@ impl AppConfig {
 
         for path in &required_files {
             if !path.exists() {
-                anyhow::bail!("Required model file not found: {}", path.display());
+                anyhow::bail!("Required model file not found: {}\nRun with --setup to download models", path.display());
             }
         }
 

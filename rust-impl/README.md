@@ -85,23 +85,26 @@ sudo dnf install alsa-lib-devel
 
 ## Quick Start
 
-### 1. Clone and Setup
+### 1. Build and Download Models
 
 ```bash
 cd rust-impl
 
+# Build in release mode
+cargo build --release
+
 # Download required models (to ~/.voice-assistant/models by default)
 # Both Go and Rust implementations use the exact same model files
-./scripts/setup.sh
-
-# Custom installation directory
-./scripts/setup.sh --assets-dir /custom/path
+./target/release/voice-assistant --setup
 
 # Force re-download even if files exist
-./scripts/setup.sh --force
+./target/release/voice-assistant --setup --force
+
+# Custom model directory
+./target/release/voice-assistant --setup --model-dir /custom/path
 ```
 
-The setup script is **idempotent** - it won't re-download existing files unless `--force` is used.
+The setup command is **idempotent** — it won't re-download existing files unless `--force` is used.
 
 ### 2. Install Ollama and Model
 
@@ -115,20 +118,16 @@ ollama pull qwen2.5:1.5b
 
 **Note**: The default model has changed from `gemma3:1b` to `qwen2.5:1.5b` to support agentic tool calling for weather and web search while keeping memory usage low.
 
-### 3. Build and Run
+### 3. Run
 
 **macOS or Linux (CPU):**
 ```bash
-# Build in release mode
-cargo build --release
-
-# Run the assistant
 ./target/release/voice-assistant
 ```
 
 **Linux with CUDA (recommended):**
 ```bash
-# Build with CUDA support
+# Build with CUDA support (instead of plain cargo build)
 ./scripts/build.sh --release --cuda
 
 # Run using the wrapper script (sets up LD_LIBRARY_PATH)
@@ -291,7 +290,7 @@ rust-impl/
 ├── Cargo.toml              # Dependencies and build configuration
 ├── README.md               # This file
 ├── src/
-│   ├── main.rs             # Application entry point and main loop
+│   ├── main.rs             # Application entry point, --setup mode, main loop
 │   ├── audio/
 │   │   ├── mod.rs          # Audio module exports
 │   │   ├── capture.rs      # Microphone input via cpal
@@ -304,14 +303,17 @@ rust-impl/
 │   ├── llm/
 │   │   ├── mod.rs          # LLM module exports
 │   │   └── client.rs       # RIG-based Ollama client
+│   ├── models/
+│   │   └── mod.rs          # HTTP download and tar.bz2 extraction helpers
 │   ├── stt/
-│   │   ├── mod.rs          # STT module exports
-│   │   └── recognizer.rs   # VAD + Whisper speech recognition
+│   │   ├── mod.rs          # VoiceDetector, Transcriber, ModelProvider traits
+│   │   ├── silero.rs       # Silero VAD implementation
+│   │   └── whisper.rs      # Whisper transcription implementation
 │   └── tts/
-│       ├── mod.rs          # TTS module exports
-│       └── synthesizer.rs  # Kokoro speech synthesis
+│       ├── mod.rs          # SpeechSynthesizer, ModelProvider traits + TTS task
+│       ├── kokoro.rs       # Kokoro TTS implementation
+│       └── text.rs         # Sentence splitting utilities
 └── scripts/
-    ├── setup.sh            # Download models (to ~/.voice-assistant/models)
     └── build.sh            # Build script with CUDA support
 ```
 
@@ -502,10 +504,10 @@ The wrapper script automatically sets `LD_LIBRARY_PATH` to find libraries in `~/
 
 ### Model Files Not Found
 
-Run the setup script:
+Run the built-in setup command:
 
 ```bash
-./scripts/setup.sh
+./target/release/voice-assistant --setup
 ```
 
 ### High CPU Usage

@@ -1,14 +1,25 @@
-//! Text-to-speech module using sherpa-rs.
+//! Text-to-speech module.
 //!
-//! Provides speech synthesis using Kokoro models.
+//! Defines [`SpeechSynthesizer`] and [`ModelProvider`] traits that decouple the rest
+//! of the voice assistant from any specific TTS implementation, and provides the
+//! Kokoro-based implementation via [`KokoroSynthesizer`] and [`KokoroModelProvider`].
+//!
+//! To add a new TTS backend:
+//! 1. Implement [`SpeechSynthesizer`] in a new file.
+//! 2. Implement [`ModelProvider`] so the binary can download/verify model files.
+//! 3. Wire the new implementation in `main.rs`.
 
-mod synthesizer;
+mod kokoro;
+mod text;
 
-pub use synthesizer::{Synthesizer, split_sentences};
+pub use kokoro::{KokoroModelProvider, KokoroSynthesizer};
+pub use text::split_sentences;
 
+use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use anyhow::Result;
 use parking_lot::Mutex;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
@@ -17,10 +28,50 @@ use tracing::{debug, error, info, warn};
 use crate::audio::Player;
 use crate::config::InterruptMode;
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Core traits
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Converts text into synthesised audio samples.
+///
+/// Implementations are expected to be slow (100–900 ms per call) and **must not**
+/// be called from the audio callback thread. The pipeline runs synthesis inside
+/// [`tokio::task::spawn_blocking`] to avoid blocking the async runtime.
+pub trait SpeechSynthesizer: Send {
+    /// Synthesise a single sentence.
+    ///
+    /// Returns an empty `Vec` for empty/whitespace-only input.
+    ///
+    /// # Errors
+    /// Returns an error if synthesis fails (e.g. model error).
+    fn synthesize_sentence(&mut self, sentence: &str) -> Result<Vec<f32>>;
+
+    /// Returns the sample rate (in Hz) of audio produced by this synthesizer.
+    fn sample_rate(&self) -> u32;
+}
+
+/// Manages the lifecycle of model files required by a TTS backend.
+pub trait ModelProvider: Send + Sync {
+    /// Download any model files that are absent from `model_dir`.
+    ///
+    /// If `force` is `true`, all files are re-downloaded even if they already exist.
+    fn ensure_models(&self, model_dir: &Path, force: bool) -> Result<()>;
+
+    /// Return the paths of model files that are absent from `model_dir`.
+    fn verify_models(&self, model_dir: &Path) -> Vec<std::path::PathBuf>;
+
+    /// Human-readable name for this TTS implementation (e.g. `"Kokoro"`).
+    fn name(&self) -> &'static str;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Pipeline task
+// ─────────────────────────────────────────────────────────────────────────────
+
 /// Configuration bundle for [`spawn_tts_task`].
 pub struct TtsTaskConfig {
     /// TTS synthesizer (CPU-bound; protected by a blocking mutex).
-    pub synthesizer: Arc<Mutex<Synthesizer>>,
+    pub synthesizer: Arc<Mutex<dyn SpeechSynthesizer>>,
     /// Audio output device.
     pub player: Arc<Player>,
     /// Microphone active flag; set to `false` to pause capture in `Wait` mode.

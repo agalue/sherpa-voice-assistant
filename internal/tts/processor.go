@@ -11,15 +11,17 @@ import (
 )
 
 // RunProcessor handles TTS synthesis and audio playback for incoming LLM responses.
-// It reads complete responses from in, splits them into sentences, and runs a pipelined
-// synthesis+playback loop where sentence N+1 is synthesized concurrently with playback
-// of sentence N to minimise perceived latency.
+// It accepts the [Synthesizer] interface so it is not coupled to any specific TTS
+// implementation. It reads complete responses from in, splits them into sentences,
+// and runs a pipelined synthesis+playback loop where sentence N+1 is synthesised
+// concurrently with playback of sentence N to minimise perceived latency.
 //
 // Microphone pause/resume and playback interruption behaviour are controlled by
 // cfg.InterruptMode. This function is intended to be run as a goroutine and returns
 // when ctx is cancelled or in is closed.
-func (s *Synthesizer) RunProcessor(
+func RunProcessor(
 	ctx context.Context,
+	synth Synthesizer,
 	player *audio.Player,
 	in <-chan string,
 	interrupt *atomic.Bool,
@@ -94,7 +96,7 @@ func (s *Synthesizer) RunProcessor(
 						log.Printf("[TTS] Synthesizing sentence %d/%d: %q", i+1, len(sentences), sentence)
 					}
 
-					chunk, err := s.Synthesize(sentence)
+					chunk, err := synth.Synthesize(sentence)
 					if err != nil {
 						log.Printf("❌ TTS error for sentence %d: %v", i+1, err)
 						continue
