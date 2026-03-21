@@ -1065,8 +1065,9 @@ The wrapper script automatically sets `LD_LIBRARY_PATH` to find libraries in `~/
 ## Troubleshooting
 
 ### "Failed to create VAD" or "Failed to create offline recognizer"
-- Models are downloaded automatically on first run; ensure `~/.voice-assistant/models/` exists and is writable
-- Check model paths match configuration
+- Run initial setup to download required models: `./voice-assistant --setup` (use `--force` to re-download if needed)
+- Ensure the model directory exists and is writable (default: `~/.voice-assistant/models/`, or as set via `--model-dir`)
+- Check that model paths and any `--model-dir` override match your configuration
 - Verify sherpa-onnx is properly installed
 
 ### "Cannot reach Ollama"
