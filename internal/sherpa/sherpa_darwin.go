@@ -27,6 +27,7 @@ type OfflineRecognizerResult = impl.OfflineRecognizerResult
 type OfflineTts = impl.OfflineTts
 type OfflineTtsConfig = impl.OfflineTtsConfig
 type GeneratedAudio = impl.GeneratedAudio
+type GenerationConfig = impl.GenerationConfig
 
 // VAD functions
 

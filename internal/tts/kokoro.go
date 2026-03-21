@@ -202,7 +202,11 @@ func (s *KokoroSynthesizer) Synthesize(text string) (*AudioOutput, error) {
 	}
 
 	// Generate audio
-	audio := s.tts.Generate(text, s.speakerID, s.speed)
+	cfg := &sherpa.GenerationConfig{
+		Sid:   s.speakerID,
+		Speed: s.speed,
+	}
+	audio := s.tts.GenerateWithConfig(text, cfg, nil)
 	if audio == nil || len(audio.Samples) == 0 {
 		return nil, fmt.Errorf("TTS generation failed")
 	}
