@@ -142,7 +142,7 @@ This downloads:
 ./voice-assistant --setup --force
 
 # Custom model directory
-./voice-assistant --setup -model-dir /custom/path
+./voice-assistant --setup --model-dir /custom/path
 
 # Combine with a different Whisper model size
 ./voice-assistant --setup --stt-model whisper-small

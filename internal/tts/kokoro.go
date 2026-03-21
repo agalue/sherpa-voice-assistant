@@ -235,29 +235,43 @@ func (s *KokoroSynthesizer) Close() {
 // Kokoro-specific helpers
 // ---------------------------------------------------------------------------
 
-// lexiconForVoice returns the path to a language-specific lexicon file if one
-// exists on disk for the given voice. Returns an empty string when there is no
-// matching lexicon, which is the expected case for most languages.
+// lexiconForVoice returns the path(s) to language-specific lexicon file(s) for the
+// given voice, as a comma-separated string suitable for the sherpa-onnx lexicon
+// field. Returns an empty string when there is no matching lexicon, which is the
+// expected case for most languages.
 func lexiconForVoice(kokoroDir, voiceName string) string {
 	v := getKokoroVoice(voiceName)
 	if v == nil {
 		return ""
 	}
-	// Only English variants have lexicon files in the Kokoro distribution.
-	var lang string
 	switch v.espeakCode {
 	case "en-us":
-		lang = "us"
+		lexPath := filepath.Join(kokoroDir, "lexicon-us-en.txt")
+		if _, err := os.Stat(lexPath); err != nil {
+			return ""
+		}
+		return lexPath
 	case "en-gb":
-		lang = "gb"
+		lexPath := filepath.Join(kokoroDir, "lexicon-gb-en.txt")
+		if _, err := os.Stat(lexPath); err != nil {
+			return ""
+		}
+		return lexPath
+	case "cmn":
+		// Chinese voices use a combined English+Chinese lexicon for best phoneme coverage.
+		// Both files must be present; returning partial paths causes sherpa-onnx to error.
+		enLex := filepath.Join(kokoroDir, "lexicon-us-en.txt")
+		zhLex := filepath.Join(kokoroDir, "lexicon-zh.txt")
+		if _, err := os.Stat(enLex); err != nil {
+			return ""
+		}
+		if _, err := os.Stat(zhLex); err != nil {
+			return ""
+		}
+		return enLex + "," + zhLex
 	default:
 		return ""
 	}
-	lexPath := filepath.Join(kokoroDir, fmt.Sprintf("lexicon-%s.txt", lang))
-	if _, err := os.Stat(lexPath); err != nil {
-		return ""
-	}
-	return lexPath
 }
 
 // ---------------------------------------------------------------------------
