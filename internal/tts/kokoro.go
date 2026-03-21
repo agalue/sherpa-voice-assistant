@@ -175,7 +175,12 @@ func NewKokoroSynthesizer(cfg *KokoroConfig) (*KokoroSynthesizer, error) {
 
 	tts := sherpa.NewOfflineTts(ttsConfig)
 	if tts == nil {
-		return nil, fmt.Errorf("failed to create Kokoro TTS synthesizer")
+		// Check for missing model files to give an actionable error message.
+		provider := &KokoroModelProvider{}
+		if missing := provider.VerifyModels(cfg.ModelDir); len(missing) > 0 {
+			return nil, fmt.Errorf("failed to create Kokoro TTS synthesizer: missing model files %v; run with --setup to download them", missing)
+		}
+		return nil, fmt.Errorf("failed to create Kokoro TTS synthesizer (model dir: %s); verify model files are valid or re-download with --setup", kokoroDir)
 	}
 
 	return &KokoroSynthesizer{
