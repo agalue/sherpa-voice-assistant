@@ -13,13 +13,13 @@ tokio-util = "0.7"
 
 # Audio I/O
 cpal = "0.17"
-rubato = "1"  # High-quality audio resampling
-audioadapter-buffers = "2"  # Buffer adapters for rubato
+rubato = "2"  # High-quality audio resampling
+audioadapter-buffers = "3"  # Buffer adapters for rubato
 
 # LLM interaction
-rig-core = { version = "0.33", default-features = false, features = ["reqwest-rustls"] }
+rig-core = { version = "0.34", default-features = false, features = ["reqwest-middleware-rustls"] }
 reqwest = { version = "0.13", default-features = false, features = ["json", "rustls", "blocking"] }
-bzip2 = "0.4"
+bzip2 = "0.6"
 tar = "0.4"
 urlencoding = "2"
 regex = "1"
