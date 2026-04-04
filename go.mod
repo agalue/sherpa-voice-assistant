@@ -4,10 +4,8 @@ go 1.26.0
 
 require (
 	github.com/gen2brain/malgo v0.11.24
-	// IMPORTANT: sherpa-onnx versions must stay in sync with SHERPA_VERSION in scripts/build.sh
-	// For CUDA builds, the build script compiles sherpa-onnx from source and the versions MUST match.
-	// The build script will fail with an error if versions drift.
-	// See README.md "Upgrading Dependencies" section for the upgrade procedure.
+	// NOTE: The CUDA build script (scripts/build.sh) reads these versions from go.mod at build time.
+	// Updating these versions here is sufficient to upgrade the CUDA build on Linux.
 	// Version mapping: v1.12.x works with ONNX Runtime 1.11.0-1.18.1 (depends on CUDA version)
 	github.com/k2-fsa/sherpa-onnx-go-linux v1.12.35
 	github.com/k2-fsa/sherpa-onnx-go-macos v1.12.35

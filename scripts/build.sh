@@ -51,61 +51,6 @@ export CGO_ENABLED=1
 OS=$(uname -s)
 ARCH=$(uname -m)
 
-# =============================================================================
-# VERSION SANITY CHECK
-# =============================================================================
-# Verifies that go.mod sherpa-onnx version matches the SHERPA_VERSION used for
-# CUDA builds. This prevents ABI mismatches when the pre-built Go bindings
-# expect a different version than the locally compiled CUDA libraries.
-#
-# This check only runs on Linux (where CUDA builds happen).
-# macOS uses pre-built bindings that handle version compatibility internally.
-# =============================================================================
-verify_go_sherpa_version() {
-    local expected_version="$1"
-
-    # Extract version from go.mod
-    local go_mod_version
-    go_mod_version=$(grep 'k2-fsa/sherpa-onnx-go-linux' "$PROJECT_DIR/go.mod" 2>/dev/null | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -1 || echo "")
-
-    if [[ -z "$go_mod_version" ]]; then
-        echo -e "${YELLOW}Warning: Could not determine sherpa-onnx version from go.mod${NC}"
-        echo -e "${YELLOW}Skipping version check...${NC}"
-        return 0
-    fi
-
-    # Extract major.minor versions (ignore patch)
-    local expected_major_minor
-    local go_mod_major_minor
-    expected_major_minor=$(echo "$expected_version" | grep -oE 'v[0-9]+\.[0-9]+')
-    go_mod_major_minor=$(echo "$go_mod_version" | grep -oE 'v[0-9]+\.[0-9]+')
-
-    if [[ "$go_mod_major_minor" != "$expected_major_minor" ]]; then
-        echo -e "${RED}═══════════════════════════════════════════════════════════════════════════${NC}"
-        echo -e "${RED}VERSION MISMATCH DETECTED!${NC}"
-        echo -e "${RED}═══════════════════════════════════════════════════════════════════════════${NC}"
-        echo -e "${RED}  go.mod sherpa-onnx-go-linux:  $go_mod_version (major.minor: $go_mod_major_minor)${NC}"
-        echo -e "${RED}  Build script SHERPA_VERSION:  $expected_version (major.minor: $expected_major_minor)${NC}"
-        echo
-        echo -e "${YELLOW}For CUDA builds, major.minor versions MUST match to avoid ABI mismatches.${NC}"
-        echo -e "${YELLOW}(Patch version differences are acceptable)${NC}"
-        echo
-        echo -e "${GREEN}To fix this, either:${NC}"
-        echo -e "${GREEN}  1. Update go.mod to match the build script major.minor version:${NC}"
-        echo -e "${GREEN}     go get github.com/k2-fsa/sherpa-onnx-go-linux@$expected_version${NC}"
-        echo -e "${GREEN}     go get github.com/k2-fsa/sherpa-onnx-go-macos@$expected_version${NC}"
-        echo
-        echo -e "${GREEN}  2. Or update SHERPA_VERSION in this script to match go.mod:${NC}"
-        echo -e "${GREEN}     Edit scripts/build.sh and set SHERPA_VERSION=\"$go_mod_version\"${NC}"
-        echo
-        echo -e "${YELLOW}See README.md \"Upgrading Dependencies\" for the full upgrade procedure.${NC}"
-        echo -e "${RED}═══════════════════════════════════════════════════════════════════════════${NC}"
-        exit 1
-    fi
-
-    echo -e "${GREEN}Version check passed: go.mod ($go_mod_version) and build script ($expected_version) use compatible major.minor versions${NC}"
-}
-
 echo -e "${YELLOW}Platform: ${OS} ${ARCH}${NC}"
 
 # Function to detect NVIDIA GPU (discrete or Jetson SOC)
@@ -239,8 +184,6 @@ fi
 case "$OS" in
 Darwin)
     echo -e "${YELLOW}macOS detected${NC}"
-    echo -e "${GREEN}  ℹ️  Version checks skipped: macOS uses pre-built sherpa-onnx-go-macos bindings${NC}"
-    echo -e "${GREEN}     that handle version compatibility internally.${NC}"
     ;;
 Linux)
     echo -e "${YELLOW}Linux detected${NC}"
@@ -273,15 +216,16 @@ if [[ "$USE_CUDA" == "true" && "$OS" == "Linux" ]]; then
     # Note: Using separate directory from Rust impl to avoid version conflicts
     SHERPA_INSTALL_DIR="$HOME/.voice-assistant/go"
     SHERPA_GO_LOCAL="$PROJECT_DIR/.sherpa-onnx-go-local"
-    # IMPORTANT: This version must match the sherpa-onnx-go-linux/macos versions in go.mod
-    # The sanity check below will fail the build if they drift apart.
-    # See README.md "Upgrading Dependencies" for the upgrade procedure.
-    SHERPA_VERSION="v1.12.26"
+    # Derive SHERPA_VERSION from go.mod - single source of truth.
+    # Updating go.mod automatically updates the CUDA build.
+    SHERPA_VERSION=$(grep 'k2-fsa/sherpa-onnx-go-linux' "$PROJECT_DIR/go.mod" | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+    if [[ -z "$SHERPA_VERSION" ]]; then
+        echo -e "${RED}ERROR: Could not determine sherpa-onnx version from go.mod${NC}"
+        echo -e "${RED}Ensure go.mod contains a github.com/k2-fsa/sherpa-onnx-go-linux entry.${NC}"
+        exit 1
+    fi
+    echo -e "${GREEN}sherpa-onnx version (from go.mod): ${SHERPA_VERSION}${NC}"
     BUILD_MARKER="$SHERPA_INSTALL_DIR/.build-complete-${SHERPA_VERSION}"
-
-    # Verify go.mod version matches before building
-    verify_go_sherpa_version "$SHERPA_VERSION"
-    echo
 
     # Clean build if requested
     if [[ "$CLEAN_BUILD" == "true" ]]; then
@@ -309,12 +253,21 @@ if [[ "$USE_CUDA" == "true" && "$OS" == "Linux" ]]; then
             exit 1
         fi
 
-        # Clone sherpa-onnx if needed
-        if [[ ! -d "$SHERPA_BUILD_DIR" ]]; then
-            echo -e "${YELLOW}Cloning sherpa-onnx...${NC}"
-            git clone --depth 1 --branch "$SHERPA_VERSION" https://github.com/k2-fsa/sherpa-onnx.git "$SHERPA_BUILD_DIR"
+        # Clone sherpa-onnx if needed, or re-clone if the existing source is a different version.
+        # A version mismatch here causes C symbols to be missing from the compiled .so.
+        CLONED_TAG=""
+        if [[ -d "$SHERPA_BUILD_DIR" ]]; then
+            CLONED_TAG=$(git -C "$SHERPA_BUILD_DIR" describe --tags --exact-match 2>/dev/null || echo "")
+        fi
+        if [[ "$CLONED_TAG" == "$SHERPA_VERSION" ]]; then
+            echo -e "${YELLOW}Using existing sherpa-onnx source (${SHERPA_VERSION})...${NC}"
         else
-            echo -e "${YELLOW}Using existing sherpa-onnx source...${NC}"
+            if [[ -d "$SHERPA_BUILD_DIR" ]]; then
+                echo -e "${YELLOW}Existing source is '${CLONED_TAG}', need '${SHERPA_VERSION}' - re-cloning...${NC}"
+                rm -rf "$SHERPA_BUILD_DIR"
+            fi
+            echo -e "${YELLOW}Cloning sherpa-onnx ${SHERPA_VERSION}...${NC}"
+            git clone --depth 1 --branch "$SHERPA_VERSION" https://github.com/k2-fsa/sherpa-onnx.git "$SHERPA_BUILD_DIR"
         fi
 
         # Set CUDA path
@@ -393,12 +346,16 @@ if [[ "$USE_CUDA" == "true" && "$OS" == "Linux" ]]; then
         # Copy the built libraries
         cp -a "$SHERPA_INSTALL_DIR/lib/"*.so* "$SHERPA_GO_LOCAL/lib/${ARCH}-unknown-linux-gnu/"
 
-        # Get the original package location
-        ORIG_PKG=$(go list -m -f '{{.Dir}}' github.com/k2-fsa/sherpa-onnx-go-linux 2>/dev/null || echo "")
-        if [[ -z "$ORIG_PKG" || ! -d "$ORIG_PKG" ]]; then
-            echo -e "${YELLOW}Downloading original Go package...${NC}"
-            go mod download github.com/k2-fsa/sherpa-onnx-go-linux@${SHERPA_VERSION}
-            ORIG_PKG=$(go list -m -f '{{.Dir}}' github.com/k2-fsa/sherpa-onnx-go-linux)
+        # Download the versioned Go package into the module cache and resolve its
+        # path directly. We must NOT use 'go list' here because the replace
+        # directive in go.mod would redirect it back to .sherpa-onnx-go-local,
+        # causing stale sources to overwrite themselves.
+        echo -e "${YELLOW}Downloading Go bindings package (${SHERPA_VERSION})...${NC}"
+        go mod download github.com/k2-fsa/sherpa-onnx-go-linux@${SHERPA_VERSION}
+        ORIG_PKG=$(go env GOPATH)/pkg/mod/github.com/k2-fsa/sherpa-onnx-go-linux@${SHERPA_VERSION}
+        if [[ ! -d "$ORIG_PKG" ]]; then
+            echo -e "${RED}ERROR: Could not locate Go package at $ORIG_PKG${NC}"
+            exit 1
         fi
 
         # Copy Go source files and headers
