@@ -94,7 +94,7 @@ impl LlmClient {
         debug!("User: {}", message);
 
         // Get complete response using Chat trait - RIG handles tool calling automatically
-        let response = self.agent.chat(message, self.history.clone()).await.context("LLM request failed")?;
+        let response = self.agent.chat(message, &mut self.history.clone()).await.context("LLM request failed")?;
 
         debug!("Assistant: {}", response);
 

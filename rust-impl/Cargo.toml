@@ -13,11 +13,11 @@ tokio-util = "0.7"
 
 # Audio I/O
 cpal = "0.17"
-rubato = "2"  # High-quality audio resampling
+rubato = "3"  # High-quality audio resampling
 audioadapter-buffers = "3"  # Buffer adapters for rubato
 
 # LLM interaction
-rig-core = { version = "0.34", default-features = false, features = ["reqwest-middleware-rustls"] }
+rig = { version = "0.37", default-features = false, features = ["reqwest-middleware-rustls"] }
 reqwest = { version = "0.13", default-features = false, features = ["json", "rustls", "blocking"] }
 bzip2 = "0.6"
 tar = "0.4"
@@ -41,7 +41,7 @@ time = { version = "0.3", features = ["macros", "formatting", "local-offset"] }
 
 # Utilities
 parking_lot = "0.12"
-ringbuf = "0.4"  # Lock-free ring buffer for audio
+ringbuf = "0.5"  # Lock-free ring buffer for audio
 num_cpus = "1"   # CPU core detection for thread configuration
 
 # Platform-specific dependencies for sherpa-rs
