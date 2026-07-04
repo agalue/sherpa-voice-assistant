@@ -931,8 +931,11 @@ Jetson devices (Nano, Orin, Xavier) come with JetPack SDK which includes CUDA su
 | Jetson Orin NX | 5.x | CUDA 11.4 | 1.16.0 |
 | Jetson Orin (JetPack 6.x) | 6.x | CUDA 12.2 | 1.18.0 |
 | Jetson Orin (JetPack 6.2+) | 6.2+ | CUDA 12.6 | 1.18.1 |
+| Jetson Orin (JetPack 7.2+) | 7.2+ | CUDA 13 (builds with CUDA 12.6) | 1.18.1 |
 
 The build script detects your CUDA version automatically and downloads the matching ONNX Runtime.
+
+**JetPack 7.2+ (CUDA 13):** JetPack 7.2 ships CUDA 13.2.1. Since no pre-built ONNX Runtime aarch64 GPU binary exists for CUDA 13 yet, the build script automatically installs `cuda-toolkit-12-6` and `cuda-compat-12-6` from NVIDIA's apt repository and compiles sherpa-onnx against CUDA 12.6. The CUDA 13 driver executes CUDA 12-compiled code natively (CUDA drivers are backward-compatible), and the `cuda-compat-12-6` package provides the `libcuda.so.12` shim at runtime. No manual steps are required — `sudo` is invoked automatically during the build.
 
 **Running on Jetson:**
 ```bash
@@ -1000,6 +1003,7 @@ The build script automatically selects the correct ONNX Runtime version based on
 | 12.2.x | 1.18.0 | CUDA 12.2 with cuDNN8 |
 | 12.6.x+ | 1.18.1 | JetPack 6.2+ (cuDNN9) |
 | 12.x | 1.18.1 | Generic CUDA 12 |
+| 13.x (JetPack 7.2+) | 1.18.1 | Jetson Orin — auto-installs CUDA 12.6 toolkit |
 
 ### Upgrade Procedure
 

@@ -25,6 +25,11 @@ log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
+# Shared CUDA utility functions (detect_nvidia_gpu, check_cuda_toolkit, get_cuda_version,
+# get_onnxruntime_version_for_cuda, install_cuda12_for_aarch64).
+# shellcheck source=scripts/cuda-lib.sh
+source "$(dirname "$SCRIPT_DIR")/scripts/cuda-lib.sh"
+
 print_usage() {
     echo "Usage: $0 [OPTIONS]"
     echo ""
@@ -100,106 +105,6 @@ OS=$(uname -s)
 ARCH=$(uname -m)
 
 log_info "Platform: ${OS} ${ARCH}"
-
-# Function to detect NVIDIA GPU (discrete or Jetson SOC)
-detect_nvidia_gpu() {
-    # Check for nvidia-smi
-    for path in /usr/bin/nvidia-smi /usr/local/bin/nvidia-smi /opt/nvidia/bin/nvidia-smi; do
-        if [[ -f "$path" ]]; then
-            return 0
-        fi
-    done
-
-    # Check for discrete GPU device
-    if [[ -e /dev/nvidia0 ]]; then
-        return 0
-    fi
-
-    # Check for Jetson indicators
-    for path in /dev/nvhost-gpu /dev/nvhost-ctrl-gpu /dev/nvmap /etc/nv_tegra_release \
-        /sys/devices/gpu.0 /sys/devices/17000000.ga10b /sys/devices/17000000.gv11b; do
-        if [[ -e "$path" ]]; then
-            return 0
-        fi
-    done
-
-    # Check device tree for tegra/jetson
-    if [[ -f /proc/device-tree/compatible ]]; then
-        if grep -q "nvidia,tegra\|nvidia,jetson" /proc/device-tree/compatible 2>/dev/null; then
-            return 0
-        fi
-    fi
-
-    return 1
-}
-
-# Function to check if CUDA toolkit is available
-check_cuda_toolkit() {
-    if command -v nvcc &>/dev/null; then
-        return 0
-    fi
-    if [[ -d /usr/local/cuda ]]; then
-        return 0
-    fi
-    # Jetson JetPack includes CUDA
-    for cuda_dir in /usr/local/cuda-*; do
-        if [[ -d "$cuda_dir" ]]; then
-            return 0
-        fi
-    done
-    return 1
-}
-
-# Function to get CUDA version
-get_cuda_version() {
-    local cuda_version=""
-    if command -v nvcc &>/dev/null; then
-        cuda_version=$(nvcc --version 2>/dev/null | grep -oP 'release \K[0-9]+\.[0-9]+' | head -1)
-    elif [[ -f /usr/local/cuda/version.txt ]]; then
-        cuda_version=$(cat /usr/local/cuda/version.txt | grep -oP 'CUDA Version \K[0-9]+\.[0-9]+')
-    elif [[ -f /usr/local/cuda/version.json ]]; then
-        cuda_version=$(grep -oP '"cuda" *: *\{ *"version" *: *"\K[0-9]+\.[0-9]+' /usr/local/cuda/version.json 2>/dev/null || echo "")
-    fi
-    echo "$cuda_version"
-}
-
-# Function to get the appropriate ONNX Runtime version for aarch64 GPU based on CUDA version
-# See: https://github.com/k2-fsa/sherpa-onnx/releases for available GPU builds
-get_onnxruntime_version_for_cuda() {
-    local cuda_ver="$1"
-    local cuda_major="${cuda_ver%%.*}"
-
-    case "$cuda_ver" in
-    10.2*)
-        # Jetson Nano B01 / JetPack 4.x
-        echo "1.11.0"
-        ;;
-    11.4*)
-        # Jetson Orin / JetPack 5.x
-        echo "1.16.0"
-        ;;
-    12.2*)
-        # CUDA 12.2 with cudnn8
-        echo "1.18.0"
-        ;;
-    12.6* | 12.*)
-        # JetPack 6.2+ (CUDA 12.6, cudnn9)
-        echo "1.18.1"
-        ;;
-    11.*)
-        # Default for CUDA 11.x - use 1.16.0
-        echo "1.16.0"
-        ;;
-    *)
-        # Default to 1.18.1 for unknown CUDA 12+ or newer
-        if [[ "$cuda_major" -ge 12 ]]; then
-            echo "1.18.1"
-        else
-            echo "1.16.0"
-        fi
-        ;;
-    esac
-}
 
 # =============================================================================
 # VERSION SANITY CHECK
@@ -283,6 +188,22 @@ verify_rust_sherpa_version() {
 build_sherpa_onnx() {
     local cuda_version="$1"
     local onnx_version=$(get_onnxruntime_version_for_cuda "$cuda_version")
+
+    # JetPack 7.2+ ships CUDA 13 on Orin. No pre-built ORT aarch64 GPU binary exists for
+    # CUDA 13 yet, so redirect to CUDA 12.6. The CUDA 13 driver is backward-compatible with
+    # CUDA 12-compiled code; cuda-compat-12-6 provides the libcuda.so.12 shim at runtime.
+    local cuda_major="${cuda_version%%.*}"
+    if [[ "$cuda_major" -ge 13 ]]; then
+        echo -e "${YELLOW}[INFO]${NC} CUDA $cuda_version on aarch64: redirecting sherpa-onnx build to CUDA 12.6" >&2
+        local cuda12_home
+        cuda12_home=$(install_cuda12_for_aarch64) || return 1
+        cuda_version="12.6"
+        onnx_version=$(get_onnxruntime_version_for_cuda "$cuda_version")
+        export CUDA_HOME="$cuda12_home"
+        export PATH="$cuda12_home/bin:$PATH"
+        export LD_LIBRARY_PATH="$cuda12_home/lib64:${LD_LIBRARY_PATH:-}"
+        echo -e "${GREEN}[INFO]${NC} Redirected: building with CUDA 12.6 → ONNX Runtime $onnx_version" >&2
+    fi
 
     # =============================================================================
     # IMPORTANT: sherpa-onnx version for CUDA builds
@@ -723,6 +644,12 @@ fi
 # Also check for Jetson-specific paths
 if [[ -d /usr/lib/aarch64-linux-gnu/tegra ]]; then
     export LD_LIBRARY_PATH="/usr/lib/aarch64-linux-gnu/tegra:$LD_LIBRARY_PATH"
+fi
+
+# CUDA 12 compat libs for JetPack 7.2+ (CUDA 13 driver, CUDA 12-built sherpa-onnx).
+# cuda-compat-12-6 installs the libcuda.so.12 shim to /usr/local/cuda-12.6/compat/.
+if [[ -d /usr/local/cuda-12.6/compat ]]; then
+    export LD_LIBRARY_PATH="/usr/local/cuda-12.6/compat:$LD_LIBRARY_PATH"
 fi
 
 # Add the sherpa-onnx lib directory if it exists (in ~/.voice-assistant/rust/lib for portability)
