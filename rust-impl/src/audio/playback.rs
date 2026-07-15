@@ -121,7 +121,7 @@ impl Player {
 
         // Build F32 output stream with lock-free callback
         let stream = device.build_output_stream(
-            &stream_config,
+            stream_config,
             move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
                 // Check for interrupts (lock-free)
                 let interrupted = interrupt_clone.load(Ordering::Relaxed) || external_interrupt_clone.as_ref().is_some_and(|e| e.load(Ordering::Relaxed));

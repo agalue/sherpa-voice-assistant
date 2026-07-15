@@ -3,7 +3,6 @@
 //! Supports both city-based queries and IP-based geolocation for automatic location detection.
 
 use reqwest::{Client, header::USER_AGENT};
-use rig::completion::ToolDefinition;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -234,20 +233,20 @@ impl Tool for WeatherTool {
     type Args = WeatherArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
-        ToolDefinition {
-            name: "get_weather".to_string(),
-            description: "Get current weather for any location. Use this when user asks about weather, temperature, or climate. Leave city empty for user's current location via IP geolocation.".to_string(),
-            parameters: json!({
-                "type": "object",
-                "properties": {
-                    "city": {
-                        "type": "string",
-                        "description": "City name. Leave empty for IP-based current location."
-                    }
+    fn description(&self) -> String {
+        "Get current weather for any location. Use this when user asks about weather, temperature, or climate. Leave city empty for user's current location via IP geolocation.".to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "city": {
+                    "type": "string",
+                    "description": "City name. Leave empty for IP-based current location."
                 }
-            }),
-        }
+            }
+        })
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {

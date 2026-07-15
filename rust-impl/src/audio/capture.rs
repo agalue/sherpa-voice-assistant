@@ -100,7 +100,7 @@ impl Capturer {
 
         // Build F32 input stream (guaranteed by find_best_config)
         let stream = device.build_input_stream(
-            &stream_config,
+            stream_config,
             move |data: &[f32], _: &cpal::InputCallbackInfo| {
                 if running_clone.load(Ordering::Relaxed) {
                     let samples = convert_to_mono_f32_f32(data, channels);
