@@ -6,7 +6,7 @@
 use anyhow::{Context, Result};
 use audioadapter_buffers::direct::InterleavedSlice;
 use parking_lot::Mutex;
-use rubato::{Fft, FixedSync, Resampler};
+use rubato::{Fft, FixedSync, Resampler, WindowFunction};
 use std::sync::Arc;
 
 /// Chunk size for FFT-based resampling (provides good quality and performance).
@@ -36,12 +36,13 @@ impl ResamplerState {
     /// # Returns
     /// A new `ResamplerState` wrapped in `Arc<Mutex<>>` for thread-safe access
     pub fn new(from_rate: u32, to_rate: u32) -> Result<Arc<Mutex<Self>>> {
-        let resampler = Fft::<f32>::new(
+        let resampler = Fft::<f32>::new_custom(
             from_rate as usize,
             to_rate as usize,
             CHUNK_SIZE,
             SUB_CHUNKS,
             1, // mono output
+            WindowFunction::BlackmanHarris2,
             FixedSync::Input,
         )
         .context("Failed to create resampler")?;
@@ -118,12 +119,13 @@ pub fn resample(samples: &[f32], from_rate: u32, to_rate: u32) -> Result<Vec<f32
     }
 
     // Create the FFT-based synchronous resampler
-    let mut resampler = Fft::<f32>::new(
+    let mut resampler = Fft::<f32>::new_custom(
         from_rate as usize,
         to_rate as usize,
         CHUNK_SIZE,
         SUB_CHUNKS,
         1, // mono
+        WindowFunction::BlackmanHarris2,
         FixedSync::Input,
     )
     .context("Failed to create resampler")?;

@@ -6,8 +6,7 @@
 
 use regex::Regex;
 use reqwest::Client;
-use rig::completion::ToolDefinition;
-use rig::tool::Tool;
+use rig::tool::{Tool, ToolContext};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::sync::OnceLock;
@@ -335,24 +334,24 @@ impl Tool for WebSearchTool {
     type Args = SearchArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
-        ToolDefinition {
-            name: "search_web".to_string(),
-            description: "Search the web for current information, news, events, facts you don't know. ALWAYS use this tool when you lack information about current events, recent news, or real-time data. Returns top search results.".to_string(),
-            parameters: json!({
-                "type": "object",
-                "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "The search query (be specific, use keywords)"
-                    }
-                },
-                "required": ["query"]
-            }),
-        }
+    fn description(&self) -> String {
+        "Search the web for current information, news, events, facts you don't know. ALWAYS use this tool when you lack information about current events, recent news, or real-time data. Returns top search results.".to_string()
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    fn parameters(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "The search query (be specific, use keywords)"
+                }
+            },
+            "required": ["query"]
+        })
+    }
+
+    async fn call(&self, _context: &mut ToolContext, args: Self::Args) -> Result<Self::Output, Self::Error> {
         info!("🔍 Searching web for: {}", args.query);
         self.search(&args.query).await
     }

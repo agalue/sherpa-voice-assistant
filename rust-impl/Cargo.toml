@@ -12,12 +12,12 @@ tokio = { version = "1", features = ["full", "signal"] }
 tokio-util = "0.7"
 
 # Audio I/O
-cpal = "0.17"
-rubato = "3"  # High-quality audio resampling
-audioadapter-buffers = "3"  # Buffer adapters for rubato
+cpal = "0.18"
+rubato = "4"  # High-quality audio resampling
+audioadapter-buffers = "4"  # Buffer adapters for rubato
 
 # LLM interaction
-rig = { version = "0.37", default-features = false, features = ["reqwest-middleware-rustls"] }
+rig = { version = "0.41", default-features = false, features = ["reqwest-middleware-rustls", "agent"] }
 reqwest = { version = "0.13", default-features = false, features = ["json", "rustls", "blocking"] }
 bzip2 = "0.6"
 tar = "0.4"
