@@ -28,7 +28,7 @@ log_error() {
 # Shared CUDA utility functions (detect_nvidia_gpu, check_cuda_toolkit, get_cuda_version,
 # get_onnxruntime_version_for_cuda, install_cuda12_for_aarch64).
 # shellcheck source=scripts/cuda-lib.sh
-source "$(dirname "$SCRIPT_DIR")/scripts/cuda-lib.sh"
+source "$(dirname "$(dirname "$SCRIPT_DIR")")/scripts/cuda-lib.sh"
 
 print_usage() {
     echo "Usage: $0 [OPTIONS]"
@@ -191,7 +191,8 @@ build_sherpa_onnx() {
 
     # JetPack 7.2+ ships CUDA 13 on Orin. No pre-built ORT aarch64 GPU binary exists for
     # CUDA 13 yet, so redirect to CUDA 12.6. The CUDA 13 driver is backward-compatible with
-    # CUDA 12-compiled code; cuda-compat-12-6 provides the libcuda.so.12 shim at runtime.
+    # CUDA 12-compiled code; the CUDA 13 nvgpu driver handles backward compatibility
+    # natively — no cuda-compat shim is needed at runtime on Jetson.
     local cuda_major="${cuda_version%%.*}"
     if [[ "$cuda_major" -ge 13 ]]; then
         echo -e "${YELLOW}[INFO]${NC} CUDA $cuda_version on aarch64: redirecting sherpa-onnx build to CUDA 12.6" >&2
@@ -646,11 +647,11 @@ if [[ -d /usr/lib/aarch64-linux-gnu/tegra ]]; then
     export LD_LIBRARY_PATH="/usr/lib/aarch64-linux-gnu/tegra:$LD_LIBRARY_PATH"
 fi
 
-# CUDA 12 compat libs for JetPack 7.2+ (CUDA 13 driver, CUDA 12-built sherpa-onnx).
-# cuda-compat-12-6 installs the libcuda.so.12 shim to /usr/local/cuda-12.6/compat/.
-if [[ -d /usr/local/cuda-12.6/compat ]]; then
-    export LD_LIBRARY_PATH="/usr/local/cuda-12.6/compat:$LD_LIBRARY_PATH"
-fi
+# NOTE: Do NOT add /usr/local/cuda-12.6/compat to LD_LIBRARY_PATH on Jetson.
+# The cuda-compat-12-6 shim is designed for discrete Tesla/datacenter GPUs only.
+# On Jetson's integrated nvgpu, loading it causes cudaSetDevice to fail with
+# error 801 (operation not supported). The system libcuda.so.1 already handles
+# CUDA 12-compiled binaries natively through the CUDA 13 nvgpu driver.
 
 # Add the sherpa-onnx lib directory if it exists (in ~/.voice-assistant/rust/lib for portability)
 if [[ -d "$HOME/.voice-assistant/rust/lib" ]]; then

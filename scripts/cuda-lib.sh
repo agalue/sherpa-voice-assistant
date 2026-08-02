@@ -92,9 +92,17 @@ get_onnxruntime_version_for_cuda() {
 # Install the CUDA 12.6 toolkit on aarch64 Jetson systems running CUDA 13 (JetPack 7.2+).
 #
 # JetPack 7.2 ships CUDA 13, but no pre-built ONNX Runtime aarch64 GPU binary exists for
-# CUDA 13 yet. Building sherpa-onnx against CUDA 12.6 works because:
-#   1. The CUDA 13 driver is backward-compatible with CUDA 12-compiled code.
-#   2. cuda-compat-12-6 provides the libcuda.so.12 shim needed at runtime.
+# CUDA 13 yet. Building sherpa-onnx against CUDA 12.6 works because the CUDA 13
+# nvgpu driver on Jetson natively handles CUDA 12-compiled code without any compat shim.
+# (The cuda-compat-12-6 shim is for discrete Tesla/datacenter GPUs only and must NOT
+# be loaded on Jetson — it breaks cudaSetDevice with error 801.)
+#
+# cuda-toolkit-12-6 and cuda-compat-12-6 are only published in the NVIDIA Ubuntu 22.04
+# arm64 repo, not in the Ubuntu 24.04 repo. On Ubuntu 24.04 Jetson systems we add the
+# ubuntu2204/arm64 NVIDIA repo as a secondary apt source. The existing keyring installed
+# by cuda-keyring (cuda-archive-keyring.gpg) covers both repos, so no new GPG key is
+# needed. The two repos have no package name overlap (12.x vs 13.x), so adding the
+# ubuntu2204 source does not risk unintended upgrades to the CUDA 13 installation.
 #
 # This function is idempotent: exits immediately if cuda-toolkit-12-6 is already present.
 # All log output goes to stderr; stdout emits only the install path (/usr/local/cuda-12.6).
@@ -111,15 +119,40 @@ install_cuda12_for_aarch64() {
     echo -e "${YELLOW}The CUDA 13 driver will execute CUDA 12-compiled code natively.${NC}" >&2
     echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}" >&2
 
-    # Add the NVIDIA CUDA apt repo keyring if cuda-toolkit-12-6 is not yet known.
+    # On Ubuntu 24.04, cuda-toolkit-12-6 is absent from the ubuntu2404 NVIDIA repo.
+    # It exists in the ubuntu2204/arm64 repo. We add that repo as a secondary source
+    # using the keyring already installed by cuda-keyring (cuda-archive-keyring.gpg).
+    local sources_file="/etc/apt/sources.list.d/cuda-ubuntu2204-arm64.list"
+    local keyring_path="/usr/share/keyrings/cuda-archive-keyring.gpg"
+
     if ! apt-cache show cuda-toolkit-12-6 &>/dev/null 2>&1; then
-        echo -e "${YELLOW}Adding NVIDIA CUDA apt repository...${NC}" >&2
-        local keyring_deb="/tmp/cuda-keyring_1.1-1_all.deb"
-        wget -q -O "$keyring_deb" \
-            "https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/arm64/cuda-keyring_1.1-1_all.deb" >&2
-        sudo dpkg -i "$keyring_deb" >&2
+        echo -e "${YELLOW}cuda-toolkit-12-6 not found in current repos.${NC}" >&2
+
+        # Ensure the NVIDIA keyring is present. The cuda-keyring package (already
+        # installed for the ubuntu2404 repo) provides the same GPG key for all NVIDIA
+        # CUDA repos, so we only need to install it if it's completely absent.
+        if [[ ! -f "$keyring_path" ]]; then
+            echo -e "${YELLOW}Installing NVIDIA CUDA apt keyring...${NC}" >&2
+            local keyring_deb="/tmp/cuda-keyring_1.1-1_all.deb"
+            wget -q -O "$keyring_deb" \
+                "https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/arm64/cuda-keyring_1.1-1_all.deb" >&2
+            sudo dpkg -i "$keyring_deb" >&2
+            rm -f "$keyring_deb"
+        fi
+
+        # Add the ubuntu2204/arm64 repo if not already present.
+        if [[ ! -f "$sources_file" ]]; then
+            echo -e "${YELLOW}Adding NVIDIA CUDA ubuntu2204/arm64 repo (for CUDA 12.6 packages)...${NC}" >&2
+            echo "deb [signed-by=${keyring_path}] https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/arm64/ /" \
+                | sudo tee "$sources_file" >/dev/null
+        fi
+
+        # No apt pinning needed: the ubuntu2204 and ubuntu2404 NVIDIA repos contain
+        # different CUDA major versions (12.x vs 13.x) with no package name overlap,
+        # so they cannot accidentally upgrade each other.
+
+        echo -e "${YELLOW}Updating apt package lists...${NC}" >&2
         sudo apt-get update -q >&2
-        rm -f "$keyring_deb"
     fi
 
     echo -e "${YELLOW}Installing cuda-toolkit-12-6 and cuda-compat-12-6...${NC}" >&2
@@ -127,7 +160,8 @@ install_cuda12_for_aarch64() {
 
     if [[ ! -d /usr/local/cuda-12.6 ]]; then
         echo -e "${RED}ERROR: cuda-toolkit-12-6 installation failed.${NC}" >&2
-        echo -e "${RED}Please install manually: sudo apt-get install cuda-toolkit-12-6 cuda-compat-12-6${NC}" >&2
+        echo -e "${RED}The ubuntu2204/arm64 NVIDIA repo was added to apt but the package${NC}" >&2
+        echo -e "${RED}could not be installed. Check apt output above for details.${NC}" >&2
         return 1
     fi
 

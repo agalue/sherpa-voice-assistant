@@ -203,8 +203,8 @@ if [[ "$USE_CUDA" == "true" && "$OS" == "Linux" ]]; then
 
                 # JetPack 7.2+ ships CUDA 13 on Orin. sherpa-onnx has no pre-built ORT
                 # aarch64 binary for CUDA 13 yet, so we build against CUDA 12.6 instead.
-                # The CUDA 13 driver is backward-compatible with CUDA 12-compiled binaries;
-                # cuda-compat-12-6 provides the libcuda.so.12 shim at runtime.
+                # The CUDA 13 nvgpu driver is backward-compatible with CUDA 12-compiled
+                # binaries natively — no cuda-compat shim is needed at runtime on Jetson.
                 if [[ "$CUDA_MAJOR" -ge 13 && "$ARCH" == "aarch64" ]]; then
                     echo -e "${YELLOW}CUDA $CUDA_VERSION on aarch64: redirecting sherpa-onnx build to CUDA 12.6${NC}"
                     CUDA12_HOME=$(install_cuda12_for_aarch64) || exit 1
@@ -375,11 +375,11 @@ if [[ -d /usr/lib/aarch64-linux-gnu/tegra ]]; then
     export LD_LIBRARY_PATH="/usr/lib/aarch64-linux-gnu/tegra:$LD_LIBRARY_PATH"
 fi
 
-# CUDA 12 compat libs for JetPack 7.2+ (CUDA 13 driver, CUDA 12-built sherpa-onnx).
-# cuda-compat-12-6 installs the libcuda.so.12 shim to /usr/local/cuda-12.6/compat/.
-if [[ -d /usr/local/cuda-12.6/compat ]]; then
-    export LD_LIBRARY_PATH="/usr/local/cuda-12.6/compat:$LD_LIBRARY_PATH"
-fi
+# NOTE: Do NOT add /usr/local/cuda-12.6/compat to LD_LIBRARY_PATH on Jetson.
+# The cuda-compat-12-6 shim is designed for discrete Tesla/datacenter GPUs only.
+# On Jetson's integrated nvgpu, loading it causes cudaSetDevice to fail with
+# error 801 (operation not supported). The system libcuda.so.1 already handles
+# CUDA 12-compiled binaries natively through the CUDA 13 nvgpu driver.
 
 # Run the assistant
 exec "$SCRIPT_DIR/voice-assistant" "$@"
