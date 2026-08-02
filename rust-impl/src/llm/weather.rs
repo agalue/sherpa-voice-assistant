@@ -3,7 +3,7 @@
 //! Supports both city-based queries and IP-based geolocation for automatic location detection.
 
 use reqwest::{Client, header::USER_AGENT};
-use rig::tool::Tool;
+use rig::tool::{Tool, ToolContext};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tracing::info;
@@ -249,7 +249,7 @@ impl Tool for WeatherTool {
         })
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, _context: &mut ToolContext, args: Self::Args) -> Result<Self::Output, Self::Error> {
         info!("🌤️  Fetching weather data...");
 
         let (lat, lon, location) = if let Some(city_name) = args.city {

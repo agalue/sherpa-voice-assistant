@@ -6,7 +6,7 @@
 
 use regex::Regex;
 use reqwest::Client;
-use rig::tool::Tool;
+use rig::tool::{Tool, ToolContext};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::sync::OnceLock;
@@ -351,7 +351,7 @@ impl Tool for WebSearchTool {
         })
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, _context: &mut ToolContext, args: Self::Args) -> Result<Self::Output, Self::Error> {
         info!("🔍 Searching web for: {}", args.query);
         self.search(&args.query).await
     }

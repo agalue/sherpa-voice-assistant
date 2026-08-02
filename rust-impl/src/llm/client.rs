@@ -2,7 +2,7 @@
 
 use anyhow::{Context, Result};
 use rig::agent::Agent;
-use rig::client::{CompletionClient, Nothing};
+use rig::client::{AgentClientExt, Nothing};
 use rig::completion::Chat;
 use rig::message::Message;
 use rig::providers::ollama;
