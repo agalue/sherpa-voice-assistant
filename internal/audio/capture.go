@@ -277,7 +277,7 @@ func (c *Capturer) Close() {
 // float32Pool reduces allocations in the audio callback hot path.
 // Buffers are sized for typical 32ms audio chunks at various sample rates.
 var float32Pool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		// Pre-allocate for 32ms at 48kHz (1536 samples) with headroom
 		buf := make([]float32, 2048)
 		return &buf
