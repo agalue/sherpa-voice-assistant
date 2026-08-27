@@ -40,7 +40,7 @@ func TestPolyphaseDownsampling(t *testing.T) {
 
 	inputLen := int(float64(fromRate) * duration)
 	input := make([]float32, inputLen)
-	for i := 0; i < inputLen; i++ {
+	for i := range inputLen {
 		input[i] = float32(math.Sin(2.0 * math.Pi * freq * float64(i) / float64(fromRate)))
 	}
 
@@ -107,7 +107,7 @@ func TestPolyphaseHistoryBuffer(t *testing.T) {
 	chunk1 := make([]float32, 1000)
 	chunk2 := make([]float32, 1000)
 
-	for i := 0; i < 1000; i++ {
+	for i := range 1000 {
 		chunk1[i] = float32(math.Sin(2.0 * math.Pi * freq * float64(i) / rate))
 		chunk2[i] = float32(math.Sin(2.0 * math.Pi * freq * float64(i+1000) / rate))
 	}

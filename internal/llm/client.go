@@ -103,7 +103,7 @@ func (c *Client) Chat(ctx context.Context, userMessage string) (string, error) {
 
 	// Agentic loop: keep calling LLM until no more tools are needed
 	maxIterations := 5 // Prevent infinite loops
-	for iteration := 0; iteration < maxIterations; iteration++ {
+	for range maxIterations {
 		var response api.ChatResponse
 		err := c.client.Chat(ctx, &api.ChatRequest{
 			Model:    c.model,

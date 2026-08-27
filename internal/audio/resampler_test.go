@@ -63,7 +63,7 @@ func TestResamplerDownsampling(t *testing.T) {
 	// Generate simple signal at 48kHz
 	inputLen := 48
 	input := make([]float32, inputLen)
-	for i := 0; i < inputLen; i++ {
+	for i := range inputLen {
 		input[i] = float32(math.Sin(2.0 * math.Pi * 100.0 * float64(i) / 48000.0))
 	}
 
@@ -218,7 +218,7 @@ func TestResamplerWithSineWave(t *testing.T) {
 
 	inputLen := int(float64(fromRate) * duration)
 	input := make([]float32, inputLen)
-	for i := 0; i < inputLen; i++ {
+	for i := range inputLen {
 		input[i] = float32(math.Sin(2.0 * math.Pi * freq * float64(i) / float64(fromRate)))
 	}
 

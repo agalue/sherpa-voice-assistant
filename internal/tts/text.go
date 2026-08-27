@@ -15,7 +15,7 @@ func SplitSentences(text string) []string {
 	var current strings.Builder
 
 	runes := []rune(text)
-	for i := 0; i < len(runes); i++ {
+	for i := range runes {
 		c := runes[i]
 		current.WriteRune(c)
 

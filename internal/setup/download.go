@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"maps"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -92,9 +93,7 @@ func ExtractTarBz2Selected(url string, wantFiles map[string]string) error {
 	tr := tar.NewReader(bzr)
 
 	remaining := make(map[string]string, len(wantFiles))
-	for k, v := range wantFiles {
-		remaining[k] = v
-	}
+	maps.Copy(remaining, wantFiles)
 
 	for {
 		hdr, err := tr.Next()

@@ -49,7 +49,7 @@ func (r *Resampler) Resample(input []float32) []float32 {
 	output := make([]float32, outputLen)
 
 	// Linear interpolation resampling
-	for i := 0; i < outputLen; i++ {
+	for i := range outputLen {
 		// Calculate source position in input array
 		srcPos := float64(i) / r.ratio
 		srcIdx := int(srcPos)

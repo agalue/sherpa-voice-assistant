@@ -148,10 +148,7 @@ func ParseDuckDuckGoHTML(html string) []SearxngResult {
 	}
 
 	// Take top 3 results
-	maxResults := 3
-	if len(linkMatches) < maxResults {
-		maxResults = len(linkMatches)
-	}
+	maxResults := min(len(linkMatches), 3)
 
 	for i := 0; i < maxResults; i++ {
 		match := linkMatches[i]
@@ -187,8 +184,8 @@ func ParseDuckDuckGoHTML(html string) []SearxngResult {
 // DuckDuckGo wraps URLs like: https://duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com&rut=...
 func decodeDDGRedirectURL(rawURL string) string {
 	// Look for uddg= parameter which contains the actual URL
-	if idx := strings.Index(rawURL, "uddg="); idx != -1 {
-		encoded := rawURL[idx+5:]
+	if _, after, ok := strings.Cut(rawURL, "uddg="); ok {
+		encoded := after
 		// Split on & to get just the encoded URL part
 		if ampIdx := strings.Index(encoded, "&"); ampIdx != -1 {
 			encoded = encoded[:ampIdx]
@@ -221,10 +218,7 @@ func htmlUnescape(s string) string {
 // Limited to 3 results with 200 char snippets for better voice output and token efficiency.
 func FormatResults(results []SearxngResult) string {
 	var output strings.Builder
-	maxResults := 3
-	if len(results) < maxResults {
-		maxResults = len(results)
-	}
+	maxResults := min(len(results), 3)
 
 	for i := 0; i < maxResults; i++ {
 		result := results[i]

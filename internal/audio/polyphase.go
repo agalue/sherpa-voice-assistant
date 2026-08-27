@@ -36,7 +36,7 @@ func NewPolyphaseResampler(fromRate, toRate int) *PolyphaseResampler {
 	}
 
 	filter := make([]float32, filterLen)
-	for i := 0; i < filterLen; i++ {
+	for i := range filterLen {
 		n := float64(i) - float64(filterLen-1)/2.0
 		if n == 0 {
 			filter[i] = float32(2.0 * cutoff)
@@ -95,7 +95,7 @@ func (r *PolyphaseResampler) upsample(input []float32) []float32 {
 	outputLen := int(float64(inputLen) * r.ratio)
 	output := make([]float32, outputLen)
 
-	for i := 0; i < outputLen; i++ {
+	for i := range outputLen {
 		srcPos := float64(i) / r.ratio
 		srcIdx := int(srcPos)
 		frac := float32(srcPos - float64(srcIdx))
@@ -131,7 +131,7 @@ func (r *PolyphaseResampler) downsample(input []float32) []float32 {
 	// Combine history with new input
 	combined := append(r.history, input...)
 
-	for i := 0; i < outputLen; i++ {
+	for i := range outputLen {
 		// Calculate source position in combined buffer
 		srcPos := float64(i) / r.ratio
 		srcIdx := int(srcPos) + len(r.history)

@@ -177,25 +177,19 @@ func main() {
 	var wg sync.WaitGroup
 
 	// Start STT processing goroutine (interface-based, model-agnostic)
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		stt.RunProcessor(ctx, detector, transcriber, transcriptions, &playbackInterrupt, cfg.Verbose)
-	}()
+	})
 
 	// Start LLM processing goroutine
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		llmClient.RunProcessor(ctx, transcriptions, responses)
-	}()
+	})
 
 	// Start TTS and playback goroutine (interface-based, model-agnostic)
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		tts.RunProcessor(ctx, synthesizer, player, responses, &playbackInterrupt, cfg, capturer)
-	}()
+	})
 
 	// Start audio capture
 	if err := capturer.Start(); err != nil {
