@@ -1,12 +1,11 @@
 //! LLM client using RIG with Ollama provider and agentic tool calling.
 
 use anyhow::{Context, Result};
-use rig::agent::Agent;
-use rig::client::{AgentClientExt, Nothing};
-use rig::completion::Chat;
+use rig::agent::{Agent, AgentBuilder};
+use rig::completion::Reasoning;
 use rig::message::Message;
-use rig::providers::ollama;
-use serde_json::json;
+use rig::providers::ollama::extension::OllamaOptions;
+use rig::providers::ollama::OllamaConfig;
 use tracing::{debug, info};
 
 use super::{WeatherTool, WebSearchTool};
@@ -15,9 +14,9 @@ use crate::config::AppConfig;
 /// LLM client for conversation with Ollama using agentic mode with tools.
 /// Uses RIG framework with tool calling for weather and web search.
 pub struct LlmClient {
-    agent: Agent<ollama::CompletionModel>, // RIG agent with Ollama backend
-    history: Vec<Message>,                 // Conversation history
-    max_history: usize,                    // Maximum history length
+    agent: Agent,            // RIG agent with Ollama backend
+    history: Vec<Message>,   // Conversation history
+    max_history: usize,      // Maximum history length
 }
 
 impl LlmClient {
@@ -35,11 +34,7 @@ impl LlmClient {
         info!("Connecting to Ollama at {}", config.ollama_url);
         info!("Using model: {}", config.ollama_model);
 
-        let client = ollama::Client::builder()
-            .api_key(Nothing)
-            .base_url(&config.ollama_url)
-            .build()
-            .context("Failed to create Ollama client")?;
+        let client = OllamaConfig::new().with_base_url(&config.ollama_url).client();
 
         // Build system prompt with tool usage instructions
         let mut system_prompt = config.system_prompt.clone();
@@ -63,15 +58,13 @@ impl LlmClient {
 
         // Reduce context window and token limits to save GPU memory on
         // resource-constrained devices running STT/TTS models alongside LLM
-        let agent = client
-            .agent(&config.ollama_model)
+        // The native /api/chat route is the only one that accepts num_ctx.
+        let agent = AgentBuilder::new(client.native_completion(&config.ollama_model))
             .preamble(&system_prompt)
             .temperature(config.temperature as f64)
-            .additional_params(json!({
-                "num_ctx": 1024,
-                "num_predict": 150,
-                "think": false,
-            }))
+            .max_tokens(150)
+            .reasoning(Reasoning::Off)
+            .provider_option(OllamaOptions::default().num_ctx(1024))
             .tool(weather_tool)
             .tool(search_tool)
             .build();
@@ -100,7 +93,7 @@ impl LlmClient {
 
         // Update history
         self.history.push(Message::user(message));
-        self.history.push(Message::assistant(&response));
+        self.history.push(Message::assistant(response.to_string()));
 
         // Trim history if needed
         while self.history.len() > self.max_history * 2 {
@@ -110,6 +103,6 @@ impl LlmClient {
             }
         }
 
-        Ok(response)
+        Ok(response.to_string())
     }
 }

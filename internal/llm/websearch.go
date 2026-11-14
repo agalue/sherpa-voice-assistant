@@ -150,7 +150,7 @@ func ParseDuckDuckGoHTML(html string) []SearxngResult {
 	// Take top 3 results
 	maxResults := min(len(linkMatches), 3)
 
-	for i := 0; i < maxResults; i++ {
+	for i := range maxResults {
 		match := linkMatches[i]
 		if len(match) < 3 {
 			continue
@@ -220,7 +220,7 @@ func FormatResults(results []SearxngResult) string {
 	var output strings.Builder
 	maxResults := min(len(results), 3)
 
-	for i := 0; i < maxResults; i++ {
+	for i := range maxResults {
 		result := results[i]
 		// More direct: just title and content without numbering/preamble
 		content := result.Content

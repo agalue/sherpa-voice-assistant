@@ -42,7 +42,7 @@ func (rb *playbackRing) push(samples []float32) int {
 	available := playbackRingSize - int(head-tail)
 	toWrite := min(len(samples), available)
 
-	for i := 0; i < toWrite; i++ {
+	for i := range toWrite {
 		rb.samples[(head+uint64(i))%playbackRingSize] = samples[i]
 	}
 
